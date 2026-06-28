@@ -676,6 +676,130 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   flex-shrink: 0;
 }
 
+/* ─── SECTION LABEL ─────────────────────────── */
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+
+/* ─── TAB BAR ────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn--active { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* ─── PILL BAR ───────────────────────────────── */
+.pill-bar { display: flex; gap: 8px; }
+.pill-btn {
+  background: var(--navy-3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 18px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pill-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+.pill-btn--active { background: rgba(244,180,0,0.12); border-color: var(--gold); color: var(--gold); }
+
+/* ─── GROUND SCHOOL ──────────────────────────── */
+.ground-enroll-banner {
+  background: rgba(244,180,0,0.06);
+  border: 1px solid rgba(244,180,0,0.2);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.ground-lesson-list { display: flex; flex-direction: column; gap: 6px; }
+
+.ground-lesson-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.ground-lesson-card:hover { border-color: rgba(255,255,255,0.15); }
+.ground-lesson-card--done { opacity: 0.6; }
+
+.ground-lesson-card__num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--navy-3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ground-lesson-card--done .ground-lesson-card__num {
+  background: rgba(244,180,0,0.15);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.ground-lesson-card__body { flex: 1; min-width: 0; }
+.ground-lesson-card__title { font-size: 14px; font-weight: 600; color: var(--text); }
+.ground-lesson-card--done .ground-lesson-card__title { text-decoration: line-through; color: var(--muted); }
+.ground-lesson-card__desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.check-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.check-btn:hover { border-color: var(--gold); }
+.check-btn--done { background: var(--gold); border-color: var(--gold); color: #080f1e; }
+
 /* ─── SYLLABUS GRID ──────────────────────────── */
 .syllabus-grid {
   display: grid;
