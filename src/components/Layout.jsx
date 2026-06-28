@@ -3,11 +3,13 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: '⊞', roles: ['admin', 'instructor', 'student'] },
-  { to: '/students',  label: 'Students',  icon: '✈', roles: ['admin'] },
-  { to: '/schedule',  label: 'Schedule',  icon: '◷', roles: ['admin', 'instructor', 'student'] },
-  { to: '/logbook',   label: 'Logbook',   icon: '◈', roles: ['admin', 'instructor', 'student'] },
-  { to: '/billing',   label: 'Billing',   icon: '◎', roles: ['admin', 'instructor', 'student'] },
+  { to: '/dashboard',   label: 'Dashboard',   icon: '⊞', roles: ['admin', 'instructor', 'student'] },
+  { to: '/students',    label: 'Students',    icon: '✈', roles: ['admin'] },
+  { to: '/instructors', label: 'Instructors', icon: '◉', roles: ['admin'] },
+  { to: '/syllabi',     label: 'Syllabi',     icon: '◧', roles: ['admin', 'instructor', 'student'] },
+  { to: '/schedule',    label: 'Schedule',    icon: '◷', roles: ['admin', 'instructor', 'student'] },
+  { to: '/logbook',     label: 'Logbook',     icon: '◈', roles: ['admin', 'instructor', 'student'] },
+  { to: '/billing',     label: 'Billing',     icon: '◎', roles: ['admin', 'instructor', 'student'] },
 ]
 
 export default function Layout({ children }) {

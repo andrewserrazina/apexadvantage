@@ -676,6 +676,59 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   flex-shrink: 0;
 }
 
+/* ─── SYLLABUS GRID ──────────────────────────── */
+.syllabus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.syllabus-card {
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.syllabus-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.syllabus-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--white);
+}
+.syllabus-card__desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.syllabus-card__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── PROGRESS BAR ───────────────────────────── */
+.progress-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar__fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
 /* ─── MOBILE TOPBAR ──────────────────────────── */
 .topbar { display: none; }
 
