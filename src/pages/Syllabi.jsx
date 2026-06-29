@@ -39,6 +39,8 @@ export default function Syllabi() {
   const [form, setForm] = useState({ name: '', description: '', category: 'Private Pilot' })
   const [lessons, setLessons] = useState([])
   const [lessonForm, setLessonForm] = useState({ title: '', description: '', duration_hours: '' })
+  const [editingLesson, setEditingLesson] = useState(null) // lesson being inline-edited
+  const [editLessonForm, setEditLessonForm] = useState({ title: '', description: '', duration_hours: '' })
   const [enrollForm, setEnrollForm] = useState({ student_id: '', instructor_id: '' })
   const [progress, setProgress] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -182,8 +184,27 @@ export default function Syllabi() {
   }
 
   async function deleteLesson(id) {
+    if (!window.confirm('Delete this lesson?')) return
     await supabase.from('syllabus_lessons').delete().eq('id', id)
     setLessons(l => l.filter(x => x.id !== id)); load()
+  }
+
+  function startEditLesson(lesson) {
+    setEditingLesson(lesson.id)
+    setEditLessonForm({ title: lesson.title, description: lesson.description ?? '', duration_hours: lesson.duration_hours ?? '' })
+  }
+
+  async function saveEditLesson(id) {
+    setSaving(true)
+    const { error } = await supabase.from('syllabus_lessons').update({
+      title: editLessonForm.title,
+      description: editLessonForm.description || null,
+      duration_hours: parseFloat(editLessonForm.duration_hours) || null,
+    }).eq('id', id)
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setLessons(l => l.map(x => x.id === id ? { ...x, title: editLessonForm.title, description: editLessonForm.description || null, duration_hours: parseFloat(editLessonForm.duration_hours) || null } : x))
+    setEditingLesson(null)
   }
 
   async function openEnroll(syllabus) {
@@ -446,15 +467,52 @@ export default function Syllabi() {
             {lessons.length === 0
               ? <p className="empty-state" style={{ padding: '12px 0' }}>No lessons yet.</p>
               : lessons.map((l, i) => (
-                <div key={l.id} className="activity-row">
-                  <div>
-                    <p className="activity-row__primary">{i + 1}. {l.title}</p>
-                    {l.description && <p className="activity-row__sub">{l.description}</p>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {l.duration_hours && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{l.duration_hours}h</span>}
-                    {canEdit && <button className="btn-link" style={{ color: '#f87171' }} onClick={() => deleteLesson(l.id)}>✕</button>}
-                  </div>
+                <div key={l.id}>
+                  {editingLesson === l.id ? (
+                    <div className="lesson-edit-row">
+                      <span className="lesson-edit-row__num">{i + 1}</span>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <input
+                          className="lesson-edit-input"
+                          value={editLessonForm.title}
+                          onChange={e => setEditLessonForm(f => ({ ...f, title: e.target.value }))}
+                          placeholder="Lesson title"
+                          autoFocus
+                        />
+                        <input
+                          className="lesson-edit-input"
+                          value={editLessonForm.description}
+                          onChange={e => setEditLessonForm(f => ({ ...f, description: e.target.value }))}
+                          placeholder="Description (optional)"
+                        />
+                        <input
+                          className="lesson-edit-input lesson-edit-input--sm"
+                          type="number" step="0.1" min="0"
+                          value={editLessonForm.duration_hours}
+                          onChange={e => setEditLessonForm(f => ({ ...f, duration_hours: e.target.value }))}
+                          placeholder="Duration (hrs)"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignSelf: 'flex-start', paddingTop: 2 }}>
+                        <button className="btn-primary-sm" onClick={() => saveEditLesson(l.id)} disabled={saving} style={{ padding: '6px 12px', fontSize: 12 }}>{saving ? '…' : 'Save'}</button>
+                        <button className="btn-secondary" onClick={() => setEditingLesson(null)} style={{ padding: '6px 12px', fontSize: 12 }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="activity-row">
+                      <div style={{ flex: 1 }}>
+                        <p className="activity-row__primary">{i + 1}. {l.title}</p>
+                        {l.description && <p className="activity-row__sub">{l.description}</p>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                        {l.duration_hours && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{l.duration_hours}h</span>}
+                        {canEdit && <>
+                          <button className="btn-link" onClick={() => startEditLesson(l)}>Edit</button>
+                          <button className="btn-link" style={{ color: '#f87171' }} onClick={() => deleteLesson(l.id)}>Delete</button>
+                        </>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             }
@@ -462,8 +520,9 @@ export default function Syllabi() {
           {canEdit && (
             <form onSubmit={addLesson} className="modal-form" style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
               {formError && <div className="form-error">{formError}</div>}
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Add Lesson</p>
               <div className="form-group">
-                <label>Lesson Title</label>
+                <label>Title</label>
                 <input type="text" value={lessonForm.title} onChange={e => setLessonForm(f => ({ ...f, title: e.target.value }))} required placeholder="e.g. Pre-flight Inspection" />
               </div>
               <div className="form-row">

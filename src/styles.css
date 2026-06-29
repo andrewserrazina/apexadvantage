@@ -800,6 +800,43 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
 .check-btn:hover { border-color: var(--gold); }
 .check-btn--done { background: var(--gold); border-color: var(--gold); color: #080f1e; }
 
+/* ─── LESSON INLINE EDIT ─────────────────────── */
+.lesson-edit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.lesson-edit-row:last-child { border-bottom: none; }
+.lesson-edit-row__num {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #080f1e;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+}
+.lesson-edit-input {
+  width: 100%;
+  background: var(--navy-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  font-family: inherit;
+}
+.lesson-edit-input:focus { border-color: var(--gold); }
+.lesson-edit-input--sm { max-width: 120px; }
+
 /* ─── SYLLABUS GRID ──────────────────────────── */
 .syllabus-grid {
   display: grid;
