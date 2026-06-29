@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 import Layout from '../components/Layout'
 import Modal from '../components/Modal'
 
@@ -7,6 +8,9 @@ const BLANK_CREATE = { full_name: '', email: '', password: '', certificates: '',
 const BLANK_EDIT = { full_name: '', email: '', certificates: '', bio: '' }
 
 export default function Instructors() {
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
+
   const [instructors, setInstructors] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -14,6 +18,7 @@ export default function Instructors() {
   const [form, setForm] = useState(BLANK_EDIT)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const [viewModal, setViewModal] = useState(null) // { instructor } for non-admin profile view
 
   async function load() {
     const { data } = await supabase
@@ -29,7 +34,8 @@ export default function Instructors() {
 
   const filtered = instructors.filter(i =>
     i.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    i.email?.toLowerCase().includes(search.toLowerCase())
+    i.email?.toLowerCase().includes(search.toLowerCase()) ||
+    i.certificates?.toLowerCase().includes(search.toLowerCase())
   )
 
   function openCreate() {
@@ -92,43 +98,79 @@ export default function Instructors() {
     load()
   }
 
+  const certList = (certs) => certs ? certs.split(',').map(c => c.trim()).filter(Boolean) : []
+
+  // Card view for all users
   return (
     <Layout>
       <div className="page-header">
         <h2 className="page-title">Instructors</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <input className="search-input" type="search" placeholder="Search instructors…" value={search} onChange={e => setSearch(e.target.value)} />
-          <button className="btn-primary-sm" onClick={openCreate}>+ Add Instructor</button>
+          {isAdmin && <button className="btn-primary-sm" onClick={openCreate}>+ Add Instructor</button>}
         </div>
       </div>
 
-      {loading ? <p className="empty-state">Loading…</p> : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Certificates</th>
-                <th>Total Lessons</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={5} className="empty-state">No instructors found.</td></tr>
-              ) : filtered.map(i => (
-                <tr key={i.id}>
-                  <td><strong>{i.full_name}</strong></td>
-                  <td>{i.email}</td>
-                  <td>{i.certificates ?? '—'}</td>
-                  <td>{i.lessons?.length ?? 0}</td>
-                  <td><button className="btn-link" onClick={() => openEdit(i)}>Edit</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading ? <p className="empty-state">Loading…</p> : filtered.length === 0 ? (
+        <p className="empty-state">No instructors found.</p>
+      ) : (
+        <div className="instructor-grid">
+          {filtered.map(inst => (
+            <div key={inst.id} className="instructor-card">
+              <div className="instructor-card__avatar">{inst.full_name?.[0] ?? '?'}</div>
+              <div className="instructor-card__body">
+                <h3 className="instructor-card__name">{inst.full_name}</h3>
+                <p className="instructor-card__lessons">{inst.lessons?.length ?? 0} lessons scheduled</p>
+                {inst.certificates && (
+                  <div className="instructor-card__certs">
+                    {certList(inst.certificates).map(c => (
+                      <span key={c} className="badge">{c}</span>
+                    ))}
+                  </div>
+                )}
+                {inst.bio && <p className="instructor-card__bio">{inst.bio}</p>}
+                <div className="instructor-card__actions">
+                  <button className="btn-link" onClick={() => setViewModal({ instructor: inst })}>View Profile</button>
+                  {isAdmin && <button className="btn-link" onClick={() => openEdit(inst)}>Edit</button>}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Profile view modal */}
+      {viewModal && (
+        <Modal title={viewModal.instructor.full_name} onClose={() => setViewModal(null)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '4px 0' }}>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div className="instructor-card__avatar" style={{ width: 64, height: 64, fontSize: 28, flexShrink: 0 }}>
+                {viewModal.instructor.full_name?.[0] ?? '?'}
+              </div>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 18 }}>{viewModal.instructor.full_name}</p>
+                <p style={{ color: 'var(--muted)', fontSize: 13 }}>{viewModal.instructor.lessons?.length ?? 0} lessons scheduled</p>
+              </div>
+            </div>
+            {viewModal.instructor.certificates && (
+              <div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Certificates & Ratings</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {certList(viewModal.instructor.certificates).map(c => <span key={c} className="badge">{c}</span>)}
+                </div>
+              </div>
+            )}
+            {viewModal.instructor.bio && (
+              <div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>About</p>
+                <p style={{ fontSize: 14, lineHeight: 1.6 }}>{viewModal.instructor.bio}</p>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setViewModal(null)}>Close</button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modal?.mode === 'create' && (
@@ -155,7 +197,7 @@ export default function Instructors() {
             </div>
             <div className="form-group">
               <label>Bio</label>
-              <textarea value={form.bio} onChange={e => field('bio', e.target.value)} rows={3} placeholder="Optional background…" />
+              <textarea value={form.bio} onChange={e => field('bio', e.target.value)} rows={3} placeholder="Background and teaching philosophy…" />
             </div>
             <div className="modal-form__actions">
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>

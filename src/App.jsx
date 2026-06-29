@@ -14,6 +14,8 @@ import Billing from './pages/Billing'
 import GroundSchedule from './pages/GroundSchedule'
 import Documents from './pages/Documents'
 import Aircraft from './pages/Aircraft'
+import Analytics from './pages/Analytics'
+import Profile from './pages/Profile'
 
 export default function App() {
   return (
@@ -25,8 +27,10 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard"   element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/students"    element={<ProtectedRoute adminOnly><Students /></ProtectedRoute>} />
-            <Route path="/instructors" element={<ProtectedRoute adminOnly><Instructors /></ProtectedRoute>} />
+            <Route path="/instructors" element={<ProtectedRoute><Instructors /></ProtectedRoute>} />
             <Route path="/aircraft"    element={<ProtectedRoute><Aircraft /></ProtectedRoute>} />
+            <Route path="/analytics"   element={<ProtectedRoute adminOnly><Analytics /></ProtectedRoute>} />
+            <Route path="/profile"     element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/syllabi"     element={<ProtectedRoute><Syllabi /></ProtectedRoute>} />
             <Route path="/schedule"    element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/logbook"     element={<ProtectedRoute><Logbook /></ProtectedRoute>} />

@@ -12,20 +12,26 @@ const BLANK_CREATE = { full_name: '', email: '', password: '', certificate_statu
 export default function Students() {
   const { user } = useAuth()
   const [students, setStudents] = useState([])
+  const [syllabi, setSyllabi] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [modal, setModal] = useState(null) // null | { mode: 'edit' | 'create', student? }
+  const [modal, setModal] = useState(null)
   const [form, setForm] = useState(BLANK_EDIT)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
+  // Enrollment modal
+  const [enrollModal, setEnrollModal] = useState(null) // { student }
+  const [enrollments, setEnrollments] = useState([]) // current student_syllabi for selected student
+  const [enrollSaving, setEnrollSaving] = useState(false)
+
   async function load() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*, logbook_entries(duration_hours)')
-      .eq('role', 'student')
-      .order('full_name')
-    setStudents(data ?? [])
+    const [{ data: s }, { data: sy }] = await Promise.all([
+      supabase.from('profiles').select('*, logbook_entries(duration_hours)').eq('role', 'student').order('full_name'),
+      supabase.from('syllabi').select('id, title').order('title'),
+    ])
+    setStudents(s ?? [])
+    setSyllabi(sy ?? [])
     setLoading(false)
   }
 
@@ -57,23 +63,26 @@ export default function Students() {
     setModal({ mode: 'edit', student })
   }
 
+  async function openEnroll(student) {
+    const { data } = await supabase.from('student_syllabi').select('syllabus_id').eq('student_id', student.id)
+    setEnrollments((data ?? []).map(e => e.syllabus_id))
+    setEnrollModal({ student })
+  }
+
   function closeModal() { setModal(null); setFormError('') }
 
   async function handleCreate(e) {
     e.preventDefault()
     setSaving(true)
     setFormError('')
-    // Capture admin session before signUp changes it
     const { data: { session: adminSession } } = await supabase.auth.getSession()
     const { data, error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
       options: { data: { full_name: form.full_name } },
     })
-    // Restore admin session immediately
     if (adminSession) await supabase.auth.setSession({ access_token: adminSession.access_token, refresh_token: adminSession.refresh_token })
     if (error) { setSaving(false); setFormError(error.message); return }
-    // Update the profile with role + extra fields
     if (data.user) {
       await supabase.from('profiles').update({
         full_name: form.full_name,
@@ -91,21 +100,55 @@ export default function Students() {
     e.preventDefault()
     setSaving(true)
     setFormError('')
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        full_name: form.full_name,
-        certificate_status: form.certificate_status || null,
-        medical_expiry: form.medical_expiry || null,
-      })
-      .eq('id', modal.student.id)
+    const { error } = await supabase.from('profiles').update({
+      full_name: form.full_name,
+      certificate_status: form.certificate_status || null,
+      medical_expiry: form.medical_expiry || null,
+    }).eq('id', modal.student.id)
     setSaving(false)
     if (error) { setFormError(error.message); return }
     closeModal()
     load()
   }
 
+  async function handleEnrollSave() {
+    setEnrollSaving(true)
+    const studentId = enrollModal.student.id
+
+    // Get existing
+    const { data: existing } = await supabase.from('student_syllabi').select('syllabus_id').eq('student_id', studentId)
+    const existingIds = (existing ?? []).map(e => e.syllabus_id)
+
+    // Insert new
+    const toAdd = enrollments.filter(id => !existingIds.includes(id))
+    const toRemove = existingIds.filter(id => !enrollments.includes(id))
+
+    if (toAdd.length) {
+      await supabase.from('student_syllabi').insert(toAdd.map(syllabus_id => ({ student_id: studentId, syllabus_id })))
+    }
+    if (toRemove.length) {
+      for (const sid of toRemove) {
+        await supabase.from('student_syllabi').delete().eq('student_id', studentId).eq('syllabus_id', sid)
+      }
+    }
+
+    setEnrollSaving(false)
+    setEnrollModal(null)
+  }
+
+  function toggleEnroll(syllabusId) {
+    setEnrollments(prev =>
+      prev.includes(syllabusId) ? prev.filter(id => id !== syllabusId) : [...prev, syllabusId]
+    )
+  }
+
   function field(key, value) { setForm(f => ({ ...f, [key]: value })) }
+
+  const certExpiring = (exp) => {
+    if (!exp) return false
+    const days = (new Date(exp) - new Date()) / 86400000
+    return days >= 0 && days <= 60
+  }
 
   return (
     <Layout>
@@ -138,10 +181,20 @@ export default function Students() {
                   <td><strong>{s.full_name}</strong></td>
                   <td>{s.email}</td>
                   <td><span className="badge">{s.certificate_status ?? 'None'}</span></td>
-                  <td>{s.medical_expiry ?? '—'}</td>
+                  <td>
+                    {s.medical_expiry
+                      ? <span style={{ color: certExpiring(s.medical_expiry) ? '#fbbf24' : 'inherit' }}>
+                          {new Date(s.medical_expiry).toLocaleDateString()}
+                          {certExpiring(s.medical_expiry) && ' ⚠'}
+                        </span>
+                      : '—'}
+                  </td>
                   <td>{totalHours(s)} hrs</td>
                   <td>
-                    <button className="btn-link" onClick={() => openEdit(s)}>Edit</button>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button className="btn-link" onClick={() => openEdit(s)}>Edit</button>
+                      <button className="btn-link" onClick={() => openEnroll(s)}>Syllabi</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -219,6 +272,38 @@ export default function Students() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {enrollModal && (
+        <Modal title={`Syllabus Enrollment — ${enrollModal.student.full_name}`} onClose={() => setEnrollModal(null)}>
+          <div className="modal-form">
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+              Toggle syllabi to enroll or unenroll this student. Progress is preserved when re-enrolling.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {syllabi.length === 0 ? (
+                <p className="empty-state">No syllabi created yet.</p>
+              ) : syllabi.map(sy => (
+                <label key={sy.id} className="enroll-row">
+                  <input
+                    type="checkbox"
+                    checked={enrollments.includes(sy.id)}
+                    onChange={() => toggleEnroll(sy.id)}
+                  />
+                  <span>{sy.title}</span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-form__actions" style={{ marginTop: 20 }}>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-secondary" onClick={() => setEnrollModal(null)}>Cancel</button>
+                <button type="button" className="btn-primary-sm" disabled={enrollSaving} onClick={handleEnrollSave}>
+                  {enrollSaving ? 'Saving…' : 'Save Enrollment'}
+                </button>
+              </div>
+            </div>
+          </div>
         </Modal>
       )}
     </Layout>

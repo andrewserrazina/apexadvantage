@@ -7,8 +7,9 @@ import NotificationBell from './NotificationBell'
 
 const navItems = [
   { to: '/dashboard',      label: 'Dashboard',    roles: ['admin', 'instructor', 'student'] },
+  { to: '/analytics',     label: 'Analytics',    roles: ['admin'] },
   { to: '/students',       label: 'Students',     roles: ['admin'] },
-  { to: '/instructors',    label: 'Instructors',  roles: ['admin'] },
+  { to: '/instructors',    label: 'Instructors',  roles: ['admin', 'instructor', 'student'] },
   { to: '/aircraft',       label: 'Fleet',        roles: ['admin', 'instructor', 'student'] },
   { to: '/syllabi',        label: 'Syllabi',      roles: ['admin', 'instructor', 'student'] },
   { to: '/schedule',       label: 'Schedule',     roles: ['admin', 'instructor', 'student'] },
@@ -162,6 +163,7 @@ export default function Layout({ children }) {
               <p className="sidebar__user-role">{role}</p>
             </div>
           </div>
+          <NavLink to="/profile" onClick={closeSidebar} className="sidebar__profile-link">My Profile</NavLink>
           <button className="sidebar__signout" onClick={handleSignOut}>Sign out</button>
         </div>
       </aside>
