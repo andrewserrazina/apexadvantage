@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
+import ApexLogo from '../components/ApexLogo'
 
 const DURATIONS = [60, 90, 120, 150, 180]
 
@@ -173,8 +174,11 @@ export default function GroundSchedule() {
       <header className="public-header">
         <div className="public-header__inner">
           <Link to="/" className="public-header__brand">
-            <span className="public-header__logo">✦</span>
-            <span className="public-header__name">Apex<em>Advantage</em></span>
+            <ApexLogo size={30} />
+            <div className="public-header__brand-text">
+              <span className="public-header__name-apex">APEX</span>
+              <span className="public-header__name-sub">— AVIATION —</span>
+            </div>
           </Link>
           <div className="public-header__actions">
             <button className="btn-secondary" onClick={copyLink} style={{ minWidth: 110 }}>
@@ -194,10 +198,12 @@ export default function GroundSchedule() {
 
       {/* Hero */}
       <div className="public-hero">
-        <h1 className="public-hero__title">Apex<em>Advantage</em> Ground School</h1>
+        <p className="public-hero__eyebrow">Something Extraordinary</p>
+        <h1 className="public-hero__title">IS TAKING<br /><em>FLIGHT.</em></h1>
+        <div className="public-hero__divider" />
         <p className="public-hero__sub">
-          Professional ground school training for Private Pilot, Instrument Rating, and Commercial certificates.
-          Classes are $25 per session — pay at the door.
+          Professional ground school for Private Pilot, Instrument Rating, and Commercial certificates.
+          Austin, Texas · $25 per session · Pay at the door.
         </p>
       </div>
 

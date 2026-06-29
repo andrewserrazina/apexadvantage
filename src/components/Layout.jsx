@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import ApexLogo from './ApexLogo'
 
 const navItems = [
-  { to: '/dashboard',   label: 'Dashboard',   icon: '⊞', roles: ['admin', 'instructor', 'student'] },
-  { to: '/students',    label: 'Students',    icon: '✈', roles: ['admin'] },
-  { to: '/instructors', label: 'Instructors', icon: '◉', roles: ['admin'] },
-  { to: '/syllabi',     label: 'Syllabi',     icon: '◧', roles: ['admin', 'instructor', 'student'] },
-  { to: '/schedule',    label: 'Schedule',    icon: '◷', roles: ['admin', 'instructor', 'student'] },
-  { to: '/logbook',     label: 'Logbook',     icon: '◈', roles: ['admin', 'instructor', 'student'] },
-  { to: '/billing',          label: 'Billing',        icon: '◎', roles: ['admin', 'instructor', 'student'] },
-  { to: '/ground-schedule',  label: 'Ground School',  icon: '◫', roles: ['admin', 'instructor', 'student'] },
+  { to: '/dashboard',      label: 'Dashboard',    roles: ['admin', 'instructor', 'student'] },
+  { to: '/students',       label: 'Students',     roles: ['admin'] },
+  { to: '/instructors',    label: 'Instructors',  roles: ['admin'] },
+  { to: '/syllabi',        label: 'Syllabi',      roles: ['admin', 'instructor', 'student'] },
+  { to: '/schedule',       label: 'Schedule',     roles: ['admin', 'instructor', 'student'] },
+  { to: '/logbook',        label: 'Logbook',      roles: ['admin', 'instructor', 'student'] },
+  { to: '/billing',        label: 'Billing',      roles: ['admin', 'instructor', 'student'] },
+  { to: '/ground-schedule', label: 'Ground School', roles: ['admin', 'instructor', 'student'] },
 ]
 
 export default function Layout({ children }) {
@@ -36,8 +37,8 @@ export default function Layout({ children }) {
           <span /><span /><span />
         </button>
         <div className="topbar__brand">
-          <span className="topbar__logo">✦</span>
-          <span className="topbar__name">Apex<em>Advantage</em></span>
+          <ApexLogo size={26} />
+          <span className="topbar__name">APEX <em>Advantage</em></span>
         </div>
       </header>
 
@@ -46,20 +47,22 @@ export default function Layout({ children }) {
 
       <aside className={`sidebar${sidebarOpen ? ' sidebar--open' : ''}`}>
         <div className="sidebar__brand">
-          <span className="sidebar__logo">✦</span>
-          <span className="sidebar__name">Apex<em>Advantage</em></span>
+          <ApexLogo size={34} />
+          <div className="sidebar__brand-text">
+            <span className="sidebar__name-apex">APEX</span>
+            <span className="sidebar__name-sub">— ADVANTAGE —</span>
+          </div>
           <button className="sidebar__close" onClick={closeSidebar} aria-label="Close menu">✕</button>
         </div>
 
         <nav className="sidebar__nav">
-          {visibleNav.map(({ to, label, icon }) => (
+          {visibleNav.map(({ to, label }) => (
             <NavLink
               key={to}
               to={to}
               onClick={closeSidebar}
               className={({ isActive }) => `nav-item${isActive ? ' nav-item--active' : ''}`}
             >
-              <span className="nav-item__icon">{icon}</span>
               <span>{label}</span>
             </NavLink>
           ))}
