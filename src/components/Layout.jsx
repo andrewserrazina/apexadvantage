@@ -48,6 +48,7 @@ export default function Layout({ children }) {
         <div className="sidebar__brand">
           <span className="sidebar__logo">✦</span>
           <span className="sidebar__name">Apex<em>Advantage</em></span>
+          <button className="sidebar__close" onClick={closeSidebar} aria-label="Close menu">✕</button>
         </div>
 
         <nav className="sidebar__nav">
