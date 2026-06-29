@@ -1181,3 +1181,62 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   margin-top: auto;
   padding-top: 4px;
 }
+
+/* ─── DOCUMENTS ──────────────────────────────── */
+.doc-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.doc-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: border-color 0.15s;
+}
+.doc-card:hover { border-color: rgba(244,180,0,0.25); }
+.doc-card__icon { font-size: 24px; flex-shrink: 0; }
+.doc-card__body { flex: 1; min-width: 0; }
+.doc-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-card__notes {
+  font-size: 12px;
+  color: var(--gold);
+  margin-top: 2px;
+}
+.doc-card__meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.doc-card__actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* ─── FILE DROP ZONE ─────────────────────────── */
+.file-drop {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--navy-3);
+}
+.file-drop:hover { border-color: var(--gold); background: rgba(244,180,0,0.04); }
+.file-drop--has-file { border-color: var(--gold); border-style: solid; }
+.file-drop__prompt { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.file-drop__hint { font-size: 12px; color: var(--muted); }
+.file-drop__name { font-size: 14px; font-weight: 600; color: var(--gold); }

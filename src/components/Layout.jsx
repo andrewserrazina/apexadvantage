@@ -10,7 +10,8 @@ const navItems = [
   { to: '/syllabi',        label: 'Syllabi',      roles: ['admin', 'instructor', 'student'] },
   { to: '/schedule',       label: 'Schedule',     roles: ['admin', 'instructor', 'student'] },
   { to: '/logbook',        label: 'Logbook',      roles: ['admin', 'instructor', 'student'] },
-  { to: '/billing',        label: 'Billing',      roles: ['admin', 'instructor', 'student'] },
+  { to: '/billing',         label: 'Billing',       roles: ['admin', 'instructor', 'student'] },
+  { to: '/documents',       label: 'Documents',     roles: ['admin', 'instructor', 'student'] },
   { to: '/ground-schedule', label: 'Ground School', roles: ['admin', 'instructor', 'student'] },
 ]
 
