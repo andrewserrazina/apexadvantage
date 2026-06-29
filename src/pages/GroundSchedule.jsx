@@ -11,6 +11,7 @@ const BLANK_SESSION = {
   title: '',
   description: '',
   location: '',
+  meet_link: '',
   scheduled_at: '',
   duration_minutes: 90,
   max_students: 20,
@@ -25,6 +26,17 @@ function fmt(dt) {
   })
 }
 
+function attendUrl(type, token) {
+  return `${window.location.origin}/attend/${type}/${token}`
+}
+
+function statusBadge(s) {
+  if (s === 'completed') return { label: 'Completed', color: '#4ade80' }
+  if (s === 'checked_in') return { label: 'Checked In', color: '#60a5fa' }
+  if (s === 'no_show') return { label: 'No Show', color: '#f87171' }
+  return { label: 'Registered', color: 'var(--muted)' }
+}
+
 export default function GroundSchedule() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
@@ -34,7 +46,7 @@ export default function GroundSchedule() {
   const [showPast, setShowPast] = useState(false)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
-  const [modal, setModal] = useState(null) // 'create' | 'edit' | 'register' | 'registrants'
+  const [modal, setModal] = useState(null)
   const [form, setForm] = useState(BLANK_SESSION)
   const [regForm, setRegForm] = useState(BLANK_REG)
   const [saving, setSaving] = useState(false)
@@ -42,6 +54,7 @@ export default function GroundSchedule() {
   const [regSuccess, setRegSuccess] = useState(false)
   const [registrants, setRegistrants] = useState([])
   const [activeSession, setActiveSession] = useState(null)
+  const [copiedLink, setCopiedLink] = useState(null) // 'in-{id}' | 'out-{id}'
 
   async function load() {
     const now = new Date().toISOString()
@@ -58,6 +71,12 @@ export default function GroundSchedule() {
     navigator.clipboard.writeText(window.location.origin + '/ground-schedule')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  function copyAttendLink(type, token, id) {
+    navigator.clipboard.writeText(attendUrl(type, token))
+    setCopiedLink(`${type}-${id}`)
+    setTimeout(() => setCopiedLink(null), 2000)
   }
 
   useEffect(() => { load() }, [])
@@ -77,6 +96,7 @@ export default function GroundSchedule() {
       title: s.title,
       description: s.description ?? '',
       location: s.location ?? '',
+      meet_link: s.meet_link ?? '',
       scheduled_at: new Date(s.scheduled_at).toISOString().slice(0, 16),
       duration_minutes: s.duration_minutes,
       max_students: s.max_students,
@@ -114,6 +134,7 @@ export default function GroundSchedule() {
       title: form.title,
       description: form.description || null,
       location: form.location || null,
+      meet_link: form.meet_link || null,
       scheduled_at: form.scheduled_at,
       duration_minutes: parseInt(form.duration_minutes),
       max_students: parseInt(form.max_students),
@@ -132,6 +153,7 @@ export default function GroundSchedule() {
       title: form.title,
       description: form.description || null,
       location: form.location || null,
+      meet_link: form.meet_link || null,
       scheduled_at: form.scheduled_at,
       duration_minutes: parseInt(form.duration_minutes),
       max_students: parseInt(form.max_students),
@@ -166,7 +188,26 @@ export default function GroundSchedule() {
     load()
   }
 
+  async function markNoShow(regId) {
+    await supabase.from('ground_registrations').update({ attendance_status: 'no_show' }).eq('id', regId)
+    const { data } = await supabase.from('ground_registrations').select('*').eq('session_id', activeSession.id).order('registered_at')
+    setRegistrants(data ?? [])
+  }
+
+  async function refreshRegistrants() {
+    if (!activeSession) return
+    const { data } = await supabase.from('ground_registrations').select('*').eq('session_id', activeSession.id).order('registered_at')
+    setRegistrants(data ?? [])
+  }
+
   const spotsLeft = (s) => s.max_students - (s.ground_registrations?.length ?? 0)
+
+  const attendanceSummary = (regs) => {
+    const completed = regs.filter(r => r.attendance_status === 'completed').length
+    const checkedIn = regs.filter(r => r.attendance_status === 'checked_in').length
+    const noShow = regs.filter(r => r.attendance_status === 'no_show').length
+    return { completed, checkedIn, noShow }
+  }
 
   return (
     <div className="public-page">
@@ -220,86 +261,88 @@ export default function GroundSchedule() {
           </div>
         ) : (
           <>
-          <div className="gs-grid">
-            {sessions.map(s => {
-              const spots = spotsLeft(s)
-              const full = spots <= 0
-              return (
-                <div key={s.id} className={`gs-card${full ? ' gs-card--full' : ''}`}>
-                  <div className="gs-card__head">
-                    <div>
-                      <h3 className="gs-card__title">{s.title}</h3>
-                      <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
+            <div className="gs-grid">
+              {sessions.map(s => {
+                const spots = spotsLeft(s)
+                const full = spots <= 0
+                return (
+                  <div key={s.id} className={`gs-card${full ? ' gs-card--full' : ''}`}>
+                    <div className="gs-card__head">
+                      <div>
+                        <h3 className="gs-card__title">{s.title}</h3>
+                        <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
+                      </div>
+                      <div className="gs-card__badge">{full ? 'Full' : `${spots} spot${spots !== 1 ? 's' : ''} left`}</div>
                     </div>
-                    <div className="gs-card__badge">{full ? 'Full' : `${spots} spot${spots !== 1 ? 's' : ''} left`}</div>
-                  </div>
-                  {s.description && <p className="gs-card__desc">{s.description}</p>}
-                  <div className="gs-card__meta">
-                    {s.location && <span>📍 {s.location}</span>}
-                    <span>⏱ {s.duration_minutes} min</span>
-                    <span>💵 $25</span>
-                  </div>
-                  <div className="gs-card__actions">
-                    {isAdmin ? (
-                      <>
-                        <button className="btn-link" onClick={() => openRegistrants(s)}>
-                          {s.ground_registrations?.length ?? 0} registered
-                        </button>
-                        <button className="btn-link" onClick={() => openEdit(s)}>Edit</button>
-                        <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
-                      </>
-                    ) : (
-                      <button
-                        className="btn-primary-sm"
-                        disabled={full}
-                        onClick={() => openRegister(s)}
-                      >
-                        {full ? 'Class Full' : 'Sign Up'}
-                      </button>
+                    {s.description && <p className="gs-card__desc">{s.description}</p>}
+                    <div className="gs-card__meta">
+                      {s.location && <span>📍 {s.location}</span>}
+                      <span>⏱ {s.duration_minutes} min</span>
+                      <span>💵 $25</span>
+                    </div>
+                    {s.meet_link && (
+                      <a href={s.meet_link} target="_blank" rel="noopener noreferrer" className="gs-meet-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                        Join Google Meet
+                      </a>
                     )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Past sessions */}
-          {pastSessions.length > 0 && (
-            <div style={{ marginTop: 48 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--muted)' }}>Past Sessions</h2>
-                <button className="btn-secondary" onClick={() => setShowPast(p => !p)}>
-                  {showPast ? 'Hide Past' : 'Show Past'}
-                </button>
-              </div>
-              {showPast && (
-                <div className="gs-grid">
-                  {pastSessions.map(s => (
-                    <div key={s.id} className="gs-card gs-card--full">
-                      <div className="gs-card__head">
-                        <div>
-                          <h3 className="gs-card__title">{s.title}</h3>
-                          <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
-                        </div>
-                        <div className="gs-card__badge">{s.ground_registrations?.length ?? 0} attended</div>
-                      </div>
-                      {s.description && <p className="gs-card__desc">{s.description}</p>}
-                      <div className="gs-card__meta">
-                        {s.location && <span>📍 {s.location}</span>}
-                        <span>⏱ {s.duration_minutes} min</span>
-                      </div>
-                      {isAdmin && (
-                        <div className="gs-card__actions">
-                          <button className="btn-link" onClick={() => openRegistrants(s)}>{s.ground_registrations?.length ?? 0} registered</button>
+                    <div className="gs-card__actions">
+                      {isAdmin ? (
+                        <>
+                          <button className="btn-link" onClick={() => openRegistrants(s)}>
+                            {s.ground_registrations?.length ?? 0} registered
+                          </button>
+                          <button className="btn-link" onClick={() => openEdit(s)}>Edit</button>
                           <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
-                        </div>
+                        </>
+                      ) : (
+                        <button className="btn-primary-sm" disabled={full} onClick={() => openRegister(s)}>
+                          {full ? 'Class Full' : 'Sign Up'}
+                        </button>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )
+              })}
             </div>
-          )}
+
+            {/* Past sessions */}
+            {pastSessions.length > 0 && (
+              <div style={{ marginTop: 48 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--muted)' }}>Past Sessions</h2>
+                  <button className="btn-secondary" onClick={() => setShowPast(p => !p)}>
+                    {showPast ? 'Hide Past' : 'Show Past'}
+                  </button>
+                </div>
+                {showPast && (
+                  <div className="gs-grid">
+                    {pastSessions.map(s => (
+                      <div key={s.id} className="gs-card gs-card--full">
+                        <div className="gs-card__head">
+                          <div>
+                            <h3 className="gs-card__title">{s.title}</h3>
+                            <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
+                          </div>
+                          <div className="gs-card__badge">{s.ground_registrations?.length ?? 0} attended</div>
+                        </div>
+                        {s.description && <p className="gs-card__desc">{s.description}</p>}
+                        <div className="gs-card__meta">
+                          {s.location && <span>📍 {s.location}</span>}
+                          <span>⏱ {s.duration_minutes} min</span>
+                        </div>
+                        {isAdmin && (
+                          <div className="gs-card__actions">
+                            <button className="btn-link" onClick={() => openRegistrants(s)}>{s.ground_registrations?.length ?? 0} registered</button>
+                            <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -332,12 +375,19 @@ export default function GroundSchedule() {
             <div className="form-row">
               <div className="form-group">
                 <label>Location</label>
-                <input type="text" value={form.location} onChange={e => field('location', e.target.value)} placeholder="e.g. Room 101 / Zoom" />
+                <input type="text" value={form.location} onChange={e => field('location', e.target.value)} placeholder="e.g. Apex Aviation – KHYI" />
               </div>
               <div className="form-group">
                 <label>Max Students</label>
                 <input type="number" value={form.max_students} onChange={e => field('max_students', e.target.value)} min={1} max={100} required />
               </div>
+            </div>
+            <div className="form-group">
+              <label>Google Meet Link</label>
+              <input type="url" value={form.meet_link} onChange={e => field('meet_link', e.target.value)} placeholder="https://meet.google.com/xxx-xxxx-xxx" />
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                Create a meeting in Google Meet or Google Calendar, then paste the link here.
+              </p>
             </div>
             <div className="modal-form__actions">
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -359,9 +409,17 @@ export default function GroundSchedule() {
               <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
               <h3 style={{ color: 'var(--gold)', marginBottom: 8 }}>You're registered!</h3>
               <p style={{ color: 'var(--muted)', marginBottom: 4 }}>{fmt(activeSession.scheduled_at)}</p>
-              {activeSession.location && <p style={{ color: 'var(--muted)', marginBottom: 16 }}>{activeSession.location}</p>}
-              <p style={{ color: 'var(--text)', marginBottom: 24 }}>
+              {activeSession.location && <p style={{ color: 'var(--muted)', marginBottom: 8 }}>{activeSession.location}</p>}
+              {activeSession.meet_link && (
+                <a href={activeSession.meet_link} target="_blank" rel="noopener noreferrer" className="gs-meet-btn" style={{ margin: '0 auto 16px', display: 'inline-flex' }}>
+                  Join Google Meet
+                </a>
+              )}
+              <p style={{ color: 'var(--text)', marginBottom: 8 }}>
                 Please bring <strong style={{ color: 'var(--gold)' }}>$25 cash or card</strong> to the session.
+              </p>
+              <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 24 }}>
+                Your instructor will share check-in and check-out links before the session to confirm your attendance.
               </p>
               <button className="btn-primary-sm" onClick={closeModal}>Done</button>
             </div>
@@ -394,32 +452,68 @@ export default function GroundSchedule() {
         </Modal>
       )}
 
-      {/* Registrants Modal */}
+      {/* Registrants + Attendance Modal */}
       {modal === 'registrants' && (
         <Modal title={`Registrants — ${activeSession?.title}`} onClose={closeModal}>
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>{fmt(activeSession.scheduled_at)}</p>
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ color: 'var(--muted)', fontSize: 13 }}>{fmt(activeSession.scheduled_at)}</p>
+            {registrants.length > 0 && (() => {
+              const s = attendanceSummary(registrants)
+              return (
+                <div className="attend-summary">
+                  <span style={{ color: '#4ade80' }}>✓ {s.completed} completed</span>
+                  <span style={{ color: '#60a5fa' }}>↑ {s.checkedIn} checked in</span>
+                  <span style={{ color: '#f87171' }}>✗ {s.noShow} no-show</span>
+                  <span style={{ color: 'var(--muted)' }}>{registrants.length - s.completed - s.checkedIn - s.noShow} pending</span>
+                </div>
+              )
+            })()}
+          </div>
+
           {registrants.length === 0 ? (
             <p className="empty-state">No registrations yet.</p>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead><tr><th>Name</th><th>Email</th><th>Registered</th></tr></thead>
-                <tbody>
-                  {registrants.map(r => (
-                    <tr key={r.id}>
-                      <td><strong>{r.full_name}</strong></td>
-                      <td>{r.email}</td>
-                      <td style={{ color: 'var(--muted)', fontSize: 13 }}>{new Date(r.registered_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {registrants.map(r => {
+                const badge = statusBadge(r.attendance_status ?? 'registered')
+                return (
+                  <div key={r.id} className="registrant-row">
+                    <div className="registrant-row__info">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <strong style={{ fontSize: 14 }}>{r.full_name}</strong>
+                        <span className="registrant-badge" style={{ color: badge.color, borderColor: badge.color }}>{badge.label}</span>
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>{r.email}</p>
+                      {r.checked_in_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>In: {new Date(r.checked_in_at).toLocaleTimeString()}</p>}
+                      {r.checked_out_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>Out: {new Date(r.checked_out_at).toLocaleTimeString()}</p>}
+                    </div>
+                    <div className="registrant-row__actions">
+                      <button
+                        className="attend-link-btn attend-link-btn--in"
+                        onClick={() => copyAttendLink('in', r.check_in_token, r.id)}
+                        title="Copy check-in link"
+                      >
+                        {copiedLink === `in-${r.id}` ? '✓ Copied' : '↓ Check-In'}
+                      </button>
+                      <button
+                        className="attend-link-btn attend-link-btn--out"
+                        onClick={() => copyAttendLink('out', r.check_out_token, r.id)}
+                        title="Copy check-out link"
+                      >
+                        {copiedLink === `out-${r.id}` ? '✓ Copied' : '↑ Check-Out'}
+                      </button>
+                      {(r.attendance_status === 'registered' || !r.attendance_status) && (
+                        <button className="btn-link" style={{ fontSize: 12, color: '#f87171' }} onClick={() => markNoShow(r.id)}>No-Show</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
-          <div className="modal-form__actions" style={{ marginTop: 16 }}>
-            <div style={{ marginLeft: 'auto' }}>
-              <button className="btn-secondary" onClick={closeModal}>Close</button>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, alignItems: 'center' }}>
+            <button className="btn-link" style={{ fontSize: 13 }} onClick={refreshRegistrants}>↻ Refresh</button>
+            <button className="btn-secondary" onClick={closeModal}>Close</button>
           </div>
         </Modal>
       )}

@@ -16,6 +16,7 @@ import Documents from './pages/Documents'
 import Aircraft from './pages/Aircraft'
 import Analytics from './pages/Analytics'
 import Profile from './pages/Profile'
+import Attend from './pages/Attend'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/logbook"     element={<ProtectedRoute><Logbook /></ProtectedRoute>} />
             <Route path="/billing"     element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/ground-schedule" element={<GroundSchedule />} />
+          <Route path="/attend/:type/:token" element={<Attend />} />
             <Route path="/documents"     element={<ProtectedRoute><Documents /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
