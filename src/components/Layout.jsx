@@ -9,7 +9,8 @@ const navItems = [
   { to: '/syllabi',     label: 'Syllabi',     icon: '◧', roles: ['admin', 'instructor', 'student'] },
   { to: '/schedule',    label: 'Schedule',    icon: '◷', roles: ['admin', 'instructor', 'student'] },
   { to: '/logbook',     label: 'Logbook',     icon: '◈', roles: ['admin', 'instructor', 'student'] },
-  { to: '/billing',     label: 'Billing',     icon: '◎', roles: ['admin', 'instructor', 'student'] },
+  { to: '/billing',          label: 'Billing',        icon: '◎', roles: ['admin', 'instructor', 'student'] },
+  { to: '/ground-schedule',  label: 'Ground School',  icon: '◫', roles: ['admin', 'instructor', 'student'] },
 ]
 
 export default function Layout({ children }) {

@@ -10,6 +10,7 @@ import Syllabi from './pages/Syllabi'
 import Schedule from './pages/Schedule'
 import Logbook from './pages/Logbook'
 import Billing from './pages/Billing'
+import GroundSchedule from './pages/GroundSchedule'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/schedule"    element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
           <Route path="/logbook"     element={<ProtectedRoute><Logbook /></ProtectedRoute>} />
           <Route path="/billing"     element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+          <Route path="/ground-schedule" element={<GroundSchedule />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
