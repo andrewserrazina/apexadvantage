@@ -8,9 +8,12 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ students: 0, hoursThisMonth: 0, upcomingLessons: 0 })
   const [todayLessons, setTodayLessons] = useState([])
   const [recentEntries, setRecentEntries] = useState([])
+  const [enrolledSyllabi, setEnrolledSyllabi] = useState([])
+  const [upcomingGroundSessions, setUpcomingGroundSessions] = useState([])
 
   const isAdmin = profile?.role === 'admin'
   const isInstructor = profile?.role === 'instructor'
+  const isStudent = profile?.role === 'student'
 
   useEffect(() => {
     if (!profile) return
@@ -59,8 +62,50 @@ export default function Dashboard() {
         setRecentEntries(recent ?? [])
       }
     }
+
+    async function loadStudentProgress() {
+      if (!isStudent) return
+      const { data: enrollments } = await supabase
+        .from('student_syllabi')
+        .select('*, syllabus:syllabi(id, title)')
+        .eq('student_id', profile.id)
+      if (!enrollments?.length) return
+
+      const enriched = await Promise.all(enrollments.map(async en => {
+        const { count: total } = await supabase
+          .from('syllabus_lessons')
+          .select('*', { count: 'exact', head: true })
+          .eq('syllabus_id', en.syllabus_id)
+        const { count: done } = await supabase
+          .from('lesson_completions')
+          .select('*', { count: 'exact', head: true })
+          .eq('student_id', profile.id)
+          .eq('syllabus_id', en.syllabus_id)
+        return { ...en, total: total ?? 0, done: done ?? 0 }
+      }))
+      setEnrolledSyllabi(enriched)
+
+      // Upcoming ground sessions (student registered for)
+      const { data: regs } = await supabase
+        .from('ground_registrations')
+        .select('session_id')
+        .eq('email', profile.email)
+      if (regs?.length) {
+        const ids = regs.map(r => r.session_id)
+        const { data: sessions } = await supabase
+          .from('ground_sessions')
+          .select('*')
+          .in('id', ids)
+          .gte('session_date', new Date().toISOString().slice(0, 10))
+          .order('session_date')
+          .limit(3)
+        setUpcomingGroundSessions(sessions ?? [])
+      }
+    }
+
     loadStats()
-  }, [profile, isAdmin, isInstructor])
+    loadStudentProgress()
+  }, [profile, isAdmin, isInstructor, isStudent])
 
   const studentLabel = isAdmin ? 'Active Students' : isInstructor ? 'My Students' : null
 
@@ -90,6 +135,29 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Student progress section */}
+      {isStudent && enrolledSyllabi.length > 0 && (
+        <section className="card" style={{ marginBottom: 24 }}>
+          <h3 className="card__title">My Progress</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {enrolledSyllabi.map(en => {
+              const pct = en.total > 0 ? Math.round((en.done / en.total) * 100) : 0
+              return (
+                <div key={en.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{en.syllabus?.title ?? 'Syllabus'}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{en.done}/{en.total} lessons · {pct}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-bar__fill" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       <div className="dashboard-grid">
         <section className="card">
           <h3 className="card__title">Recent Logbook Entries</h3>
@@ -111,26 +179,45 @@ export default function Dashboard() {
             ))
           }
         </section>
-        <section className="card">
-          <h3 className="card__title">Today's Schedule</h3>
-          {todayLessons.length === 0
-            ? <p className="empty-state">No lessons scheduled today.</p>
-            : todayLessons.map(l => (
-              <div key={l.id} className="activity-row">
-                <div>
-                  <p className="activity-row__primary">{l.lesson_type ?? 'Lesson'}</p>
-                  <p className="activity-row__sub">
-                    {l.student?.full_name ?? l.instructor?.full_name ?? '—'}
-                    {l.aircraft_id ? ` · ${l.aircraft_id}` : ''}
-                  </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <section className="card">
+            <h3 className="card__title">Today's Schedule</h3>
+            {todayLessons.length === 0
+              ? <p className="empty-state">No lessons scheduled today.</p>
+              : todayLessons.map(l => (
+                <div key={l.id} className="activity-row">
+                  <div>
+                    <p className="activity-row__primary">{l.lesson_type ?? 'Lesson'}</p>
+                    <p className="activity-row__sub">
+                      {l.student?.full_name ?? l.instructor?.full_name ?? '—'}
+                    </p>
+                  </div>
+                  <div className="activity-row__meta">
+                    <span>{new Date(l.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
                 </div>
-                <div className="activity-row__meta">
-                  <span>{new Date(l.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              ))
+            }
+          </section>
+
+          {isStudent && upcomingGroundSessions.length > 0 && (
+            <section className="card">
+              <h3 className="card__title">Upcoming Ground School</h3>
+              {upcomingGroundSessions.map(s => (
+                <div key={s.id} className="activity-row">
+                  <div>
+                    <p className="activity-row__primary">{s.title}</p>
+                    <p className="activity-row__sub">{s.location ?? 'Location TBD'}</p>
+                  </div>
+                  <div className="activity-row__meta">
+                    <span>{new Date(s.session_date).toLocaleDateString()}</span>
+                  </div>
                 </div>
-              </div>
-            ))
-          }
-        </section>
+              ))}
+            </section>
+          )}
+        </div>
       </div>
     </Layout>
   )

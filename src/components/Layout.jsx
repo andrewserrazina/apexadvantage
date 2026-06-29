@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
 import ApexLogo from './ApexLogo'
+import NotificationBell from './NotificationBell'
 
 const navItems = [
   { to: '/dashboard',      label: 'Dashboard',    roles: ['admin', 'instructor', 'student'] },
   { to: '/students',       label: 'Students',     roles: ['admin'] },
   { to: '/instructors',    label: 'Instructors',  roles: ['admin'] },
+  { to: '/aircraft',       label: 'Fleet',        roles: ['admin', 'instructor', 'student'] },
   { to: '/syllabi',        label: 'Syllabi',      roles: ['admin', 'instructor', 'student'] },
   { to: '/schedule',       label: 'Schedule',     roles: ['admin', 'instructor', 'student'] },
   { to: '/logbook',        label: 'Logbook',      roles: ['admin', 'instructor', 'student'] },
@@ -15,10 +18,25 @@ const navItems = [
   { to: '/ground-schedule', label: 'Ground School', roles: ['admin', 'instructor', 'student'] },
 ]
 
+const SEARCH_TABLES = [
+  { table: 'profiles',        labelCol: 'full_name',   sub: 'role',        link: id => `/students` },
+  { table: 'lessons',         labelCol: 'lesson_type', sub: 'starts_at',   link: () => '/schedule' },
+  { table: 'logbook_entries', labelCol: 'route',       sub: 'date',        link: () => '/logbook' },
+  { table: 'invoices',        labelCol: 'description', sub: 'status',      link: () => '/billing' },
+]
+
 export default function Layout({ children }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Search state
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchRef = useRef()
+  const searchTimer = useRef()
 
   const role = profile?.role ?? 'student'
   const visibleNav = navItems.filter(item => item.roles.includes(role))
@@ -29,6 +47,38 @@ export default function Layout({ children }) {
   }
 
   function closeSidebar() { setSidebarOpen(false) }
+
+  // Global search
+  useEffect(() => {
+    clearTimeout(searchTimer.current)
+    if (!query.trim()) { setResults([]); return }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true)
+      const combined = []
+
+      const [profilesRes, lessonsRes, logbookRes, invoicesRes] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, role').ilike('full_name', `%${query}%`).limit(3),
+        supabase.from('lessons').select('id, lesson_type, starts_at').ilike('lesson_type', `%${query}%`).limit(3),
+        supabase.from('logbook_entries').select('id, route, date').ilike('route', `%${query}%`).limit(3),
+        supabase.from('invoices').select('id, description, status').ilike('description', `%${query}%`).limit(3),
+      ])
+
+      for (const p of profilesRes.data ?? []) combined.push({ label: p.full_name, sub: p.role, link: p.role === 'student' ? '/students' : '/instructors' })
+      for (const l of lessonsRes.data ?? []) combined.push({ label: l.lesson_type ?? 'Lesson', sub: new Date(l.starts_at).toLocaleDateString(), link: '/schedule' })
+      for (const e of logbookRes.data ?? []) combined.push({ label: e.route ?? 'Flight', sub: new Date(e.date).toLocaleDateString(), link: '/logbook' })
+      for (const i of invoicesRes.data ?? []) combined.push({ label: i.description, sub: i.status, link: '/billing' })
+
+      setResults(combined)
+      setSearching(false)
+      setSearchOpen(true)
+    }, 300)
+  }, [query])
+
+  useEffect(() => {
+    function handle(e) { if (searchRef.current && !searchRef.current.contains(e.target)) setSearchOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
 
   return (
     <div className="app-shell">
@@ -41,6 +91,7 @@ export default function Layout({ children }) {
           <ApexLogo size={26} />
           <span className="topbar__name">APEX <em>Advantage</em></span>
         </div>
+        <NotificationBell />
       </header>
 
       {/* Overlay */}
@@ -54,6 +105,37 @@ export default function Layout({ children }) {
             <span className="sidebar__name-sub">— ADVANTAGE —</span>
           </div>
           <button className="sidebar__close" onClick={closeSidebar} aria-label="Close menu">✕</button>
+        </div>
+
+        {/* Search */}
+        <div className="sidebar__search" ref={searchRef}>
+          <input
+            className="sidebar__search-input"
+            type="text"
+            placeholder="Search…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onFocus={() => results.length > 0 && setSearchOpen(true)}
+          />
+          {searchOpen && results.length > 0 && (
+            <div className="search-dropdown">
+              {results.map((r, i) => (
+                <button
+                  key={i}
+                  className="search-result"
+                  onClick={() => { navigate(r.link); setQuery(''); setSearchOpen(false); closeSidebar() }}
+                >
+                  <span className="search-result__label">{r.label}</span>
+                  <span className="search-result__sub">{r.sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchOpen && query && results.length === 0 && !searching && (
+            <div className="search-dropdown">
+              <p className="search-empty">No results for "{query}"</p>
+            </div>
+          )}
         </div>
 
         <nav className="sidebar__nav">
@@ -70,6 +152,9 @@ export default function Layout({ children }) {
         </nav>
 
         <div className="sidebar__footer">
+          <div className="sidebar__notif">
+            <NotificationBell />
+          </div>
           <div className="sidebar__user">
             <div className="sidebar__avatar">{profile?.full_name?.[0] ?? '?'}</div>
             <div>

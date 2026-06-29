@@ -6,6 +6,26 @@ import Modal from '../components/Modal'
 
 const BLANK = { student_id: '', instructor_id: '', date: '', aircraft_id: '', route: '', duration_hours: '', notes: '' }
 
+function exportCSV(entries, studentName) {
+  const headers = ['Date', 'Aircraft', 'Route', 'Duration (hrs)', 'Instructor', 'Notes']
+  const rows = entries.map(e => [
+    e.date,
+    e.aircraft_id ?? '',
+    e.route ?? '',
+    e.duration_hours ?? '',
+    e.instructor?.full_name ?? '',
+    (e.notes ?? '').replace(/,/g, ';'),
+  ])
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `logbook_${(studentName ?? 'export').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function Logbook() {
   const { profile } = useAuth()
   const [entries, setEntries] = useState([])
@@ -13,6 +33,7 @@ export default function Logbook() {
   const [studentId, setStudentId] = useState('')
   const [students, setStudents] = useState([])
   const [instructors, setInstructors] = useState([])
+  const [aircraft, setAircraft] = useState([])
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
@@ -44,6 +65,8 @@ export default function Logbook() {
       supabase.from('profiles').select('id, full_name').eq('role', 'instructor').order('full_name')
         .then(({ data }) => setInstructors(data ?? []))
     }
+    supabase.from('aircraft').select('id, tail_number, make, model').order('tail_number')
+      .then(({ data }) => setAircraft(data ?? []))
   }, [profile])
 
   async function loadEntries(id) {
@@ -65,6 +88,10 @@ export default function Logbook() {
   }, [studentId, profile])
 
   const totalHours = entries.reduce((sum, e) => sum + (e.duration_hours ?? 0), 0).toFixed(1)
+
+  const currentStudentName = canEdit
+    ? students.find(s => s.id === studentId)?.full_name
+    : profile?.full_name
 
   function openCreate() {
     setForm({
@@ -93,7 +120,6 @@ export default function Logbook() {
   }
 
   function closeModal() { setModal(null); setFormError('') }
-
   function field(key, val) { setForm(f => ({ ...f, [key]: val })) }
 
   async function handleSave(e) {
@@ -132,11 +158,21 @@ export default function Logbook() {
 
   const showTable = !canEdit || studentId
 
+  // Resolve aircraft tail from id
+  function aircraftLabel(id) {
+    if (!id) return '—'
+    const ac = aircraft.find(a => a.id === id)
+    return ac ? ac.tail_number : id
+  }
+
   return (
     <Layout>
       <div className="page-header">
         <h2 className="page-title">Logbook</h2>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {showTable && entries.length > 0 && (
+            <button className="btn-secondary" onClick={() => exportCSV(entries, currentStudentName)}>Export CSV</button>
+          )}
           {canEdit && showTable && (
             <button className="btn-primary-sm" onClick={openCreate}>+ Log Flight</button>
           )}
@@ -185,7 +221,7 @@ export default function Logbook() {
               ) : entries.map(e => (
                 <tr key={e.id}>
                   <td>{new Date(e.date).toLocaleDateString()}</td>
-                  <td>{e.aircraft_id ?? '—'}</td>
+                  <td>{aircraftLabel(e.aircraft_id)}</td>
                   <td>{e.route ?? '—'}</td>
                   <td>{e.duration_hours} hrs</td>
                   <td>{e.instructor?.full_name ?? '—'}</td>
@@ -233,11 +269,16 @@ export default function Logbook() {
             <div className="form-row">
               <div className="form-group">
                 <label>Aircraft</label>
-                <input type="text" placeholder="e.g. N12345" value={form.aircraft_id} onChange={e => field('aircraft_id', e.target.value)} />
+                <select value={form.aircraft_id} onChange={e => field('aircraft_id', e.target.value)}>
+                  <option value="">No aircraft</option>
+                  {aircraft.map(a => (
+                    <option key={a.id} value={a.id}>{a.tail_number}{a.make ? ` — ${a.make} ${a.model ?? ''}` : ''}</option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
                 <label>Route</label>
-                <input type="text" placeholder="e.g. KPAE - KBFI" value={form.route} onChange={e => field('route', e.target.value)} />
+                <input type="text" placeholder="e.g. KAUS - KSAT" value={form.route} onChange={e => field('route', e.target.value)} />
               </div>
             </div>
             <div className="form-group">
