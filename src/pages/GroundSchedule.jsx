@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
+import ApexLogo from '../components/ApexLogo'
 
 const DURATIONS = [60, 90, 120, 150, 180]
 
@@ -29,7 +30,10 @@ export default function GroundSchedule() {
   const isAdmin = profile?.role === 'admin'
 
   const [sessions, setSessions] = useState([])
+  const [pastSessions, setPastSessions] = useState([])
+  const [showPast, setShowPast] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState(false)
   const [modal, setModal] = useState(null) // 'create' | 'edit' | 'register' | 'registrants'
   const [form, setForm] = useState(BLANK_SESSION)
   const [regForm, setRegForm] = useState(BLANK_REG)
@@ -40,13 +44,20 @@ export default function GroundSchedule() {
   const [activeSession, setActiveSession] = useState(null)
 
   async function load() {
-    const { data } = await supabase
-      .from('ground_sessions')
-      .select('*, ground_registrations(id)')
-      .gte('scheduled_at', new Date().toISOString())
-      .order('scheduled_at')
-    setSessions(data ?? [])
+    const now = new Date().toISOString()
+    const [{ data: upcoming }, { data: past }] = await Promise.all([
+      supabase.from('ground_sessions').select('*, ground_registrations(id)').gte('scheduled_at', now).order('scheduled_at'),
+      supabase.from('ground_sessions').select('*, ground_registrations(id)').lt('scheduled_at', now).order('scheduled_at', { ascending: false }),
+    ])
+    setSessions(upcoming ?? [])
+    setPastSessions(past ?? [])
     setLoading(false)
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(window.location.origin + '/ground-schedule')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   useEffect(() => { load() }, [])
@@ -163,10 +174,16 @@ export default function GroundSchedule() {
       <header className="public-header">
         <div className="public-header__inner">
           <Link to="/" className="public-header__brand">
-            <span className="public-header__logo">✦</span>
-            <span className="public-header__name">Apex<em>Advantage</em></span>
+            <ApexLogo size={30} />
+            <div className="public-header__brand-text">
+              <span className="public-header__name-apex">APEX</span>
+              <span className="public-header__name-sub">— AVIATION —</span>
+            </div>
           </Link>
           <div className="public-header__actions">
+            <button className="btn-secondary" onClick={copyLink} style={{ minWidth: 110 }}>
+              {copied ? '✓ Copied!' : '🔗 Share Link'}
+            </button>
             {profile ? (
               <Link to="/dashboard" className="btn-secondary">Back to App</Link>
             ) : (
@@ -181,10 +198,12 @@ export default function GroundSchedule() {
 
       {/* Hero */}
       <div className="public-hero">
-        <h1 className="public-hero__title">Apex<em>Advantage</em> Ground School</h1>
+        <p className="public-hero__eyebrow">Something Extraordinary</p>
+        <h1 className="public-hero__title">IS TAKING<br /><em>FLIGHT.</em></h1>
+        <div className="public-hero__divider" />
         <p className="public-hero__sub">
-          Professional ground school training for Private Pilot, Instrument Rating, and Commercial certificates.
-          Classes are $25 per session — pay at the door.
+          Professional ground school for Private Pilot, Instrument Rating, and Commercial certificates.
+          Austin, Texas · $25 per session · Pay at the door.
         </p>
       </div>
 
@@ -192,9 +211,15 @@ export default function GroundSchedule() {
       <div className="public-content">
         {loading ? (
           <p className="empty-state">Loading sessions…</p>
-        ) : sessions.length === 0 ? (
-          <p className="empty-state">No upcoming sessions scheduled. Check back soon!</p>
+        ) : sessions.length === 0 && !showPast ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <p className="empty-state" style={{ marginBottom: 16 }}>No upcoming sessions scheduled. Check back soon!</p>
+            {pastSessions.length > 0 && (
+              <button className="btn-secondary" onClick={() => setShowPast(true)}>View Past Sessions</button>
+            )}
+          </div>
         ) : (
+          <>
           <div className="gs-grid">
             {sessions.map(s => {
               const spots = spotsLeft(s)
@@ -237,6 +262,45 @@ export default function GroundSchedule() {
               )
             })}
           </div>
+
+          {/* Past sessions */}
+          {pastSessions.length > 0 && (
+            <div style={{ marginTop: 48 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--muted)' }}>Past Sessions</h2>
+                <button className="btn-secondary" onClick={() => setShowPast(p => !p)}>
+                  {showPast ? 'Hide Past' : 'Show Past'}
+                </button>
+              </div>
+              {showPast && (
+                <div className="gs-grid">
+                  {pastSessions.map(s => (
+                    <div key={s.id} className="gs-card gs-card--full">
+                      <div className="gs-card__head">
+                        <div>
+                          <h3 className="gs-card__title">{s.title}</h3>
+                          <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
+                        </div>
+                        <div className="gs-card__badge">{s.ground_registrations?.length ?? 0} attended</div>
+                      </div>
+                      {s.description && <p className="gs-card__desc">{s.description}</p>}
+                      <div className="gs-card__meta">
+                        {s.location && <span>📍 {s.location}</span>}
+                        <span>⏱ {s.duration_minutes} min</span>
+                      </div>
+                      {isAdmin && (
+                        <div className="gs-card__actions">
+                          <button className="btn-link" onClick={() => openRegistrants(s)}>{s.ground_registrations?.length ?? 0} registered</button>
+                          <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          </>
         )}
       </div>
 

@@ -43,6 +43,9 @@ export default function Syllabi() {
   const [editLessonForm, setEditLessonForm] = useState({ title: '', description: '', duration_hours: '' })
   const [enrollForm, setEnrollForm] = useState({ student_id: '', instructor_id: '' })
   const [progress, setProgress] = useState(null)
+  const [materials, setMaterials] = useState([])
+  const [materialFile, setMaterialFile] = useState(null)
+  const [materialTitle, setMaterialTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -224,6 +227,48 @@ export default function Syllabi() {
     closeModal()
   }
 
+  async function openMaterials(syllabus) {
+    const { data } = await supabase.from('training_materials').select('*, uploader:uploaded_by(full_name)').eq('syllabus_id', syllabus.id).order('uploaded_at', { ascending: false })
+    setMaterials(data ?? [])
+    setMaterialFile(null)
+    setMaterialTitle('')
+    setFormError('')
+    setModal({ mode: 'materials', syllabus })
+  }
+
+  async function uploadMaterial(e) {
+    e.preventDefault()
+    if (!materialFile) { setFormError('Select a file.'); return }
+    setSaving(true); setFormError('')
+    const path = `${modal.syllabus.id}/${Date.now()}_${materialFile.name}`
+    const { error: storageErr } = await supabase.storage.from('training-materials').upload(path, materialFile, { upsert: false })
+    if (storageErr) { setSaving(false); setFormError(storageErr.message); return }
+    const { error: dbErr } = await supabase.from('training_materials').insert({
+      syllabus_id: modal.syllabus.id,
+      title: materialTitle || materialFile.name,
+      file_name: materialFile.name,
+      file_path: path,
+      uploaded_by: profile.id,
+    })
+    setSaving(false)
+    if (dbErr) { setFormError(dbErr.message); return }
+    setMaterialFile(null); setMaterialTitle('')
+    const { data } = await supabase.from('training_materials').select('*, uploader:uploaded_by(full_name)').eq('syllabus_id', modal.syllabus.id).order('uploaded_at', { ascending: false })
+    setMaterials(data ?? [])
+  }
+
+  async function downloadMaterial(mat) {
+    const { data } = await supabase.storage.from('training-materials').createSignedUrl(mat.file_path, 300)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  async function deleteMaterial(mat) {
+    if (!window.confirm(`Delete "${mat.title}"?`)) return
+    await supabase.storage.from('training-materials').remove([mat.file_path])
+    await supabase.from('training_materials').delete().eq('id', mat.id)
+    setMaterials(m => m.filter(x => x.id !== mat.id))
+  }
+
   async function openProgress(syllabus) {
     const { data: enrollments } = await supabase.from('student_syllabi')
       .select('*, student:profiles!student_id(full_name), instructor:profiles!instructor_id(full_name)')
@@ -286,6 +331,7 @@ export default function Syllabi() {
                   {s.description && <p className="syllabus-card__desc">{s.description}</p>}
                   <div className="syllabus-card__actions">
                     <button className="btn-link" onClick={() => openLessons(s)}>Lessons</button>
+                    <button className="btn-link" onClick={() => openMaterials(s)}>Materials</button>
                     <button className="btn-link" onClick={() => openProgress(s)}>Progress</button>
                     {canEdit && <>
                       <button className="btn-link" onClick={() => openEnroll(s)}>Enroll</button>
@@ -570,6 +616,49 @@ export default function Syllabi() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {modal?.mode === 'materials' && (
+        <Modal title={`Materials — ${modal.syllabus.name}`} onClose={closeModal}>
+          <div style={{ marginBottom: 16 }}>
+            {materials.length === 0
+              ? <p className="empty-state" style={{ padding: '12px 0' }}>No materials uploaded yet.</p>
+              : materials.map(mat => (
+                <div key={mat.id} className="activity-row">
+                  <div style={{ flex: 1 }}>
+                    <p className="activity-row__primary">📄 {mat.title}</p>
+                    <p className="activity-row__sub">{mat.file_name} · {new Date(mat.uploaded_at).toLocaleDateString()}{mat.uploader?.full_name ? ` · ${mat.uploader.full_name}` : ''}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+                    <button className="btn-link" onClick={() => downloadMaterial(mat)}>Download</button>
+                    {canEdit && <button className="btn-link" style={{ color: '#f87171' }} onClick={() => deleteMaterial(mat)}>Delete</button>}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+          {canEdit && (
+            <form onSubmit={uploadMaterial} className="modal-form" style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              {formError && <div className="form-error">{formError}</div>}
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Upload Material</p>
+              <div className="form-group">
+                <label>Title</label>
+                <input type="text" value={materialTitle} onChange={e => setMaterialTitle(e.target.value)} placeholder="e.g. Private Pilot Handbook Chapter 3" />
+              </div>
+              <div className="form-group">
+                <label>File</label>
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.pptx,.docx,.xlsx"
+                  onChange={e => setMaterialFile(e.target.files[0] ?? null)}
+                  style={{ color: 'var(--text)', fontSize: 13 }} />
+              </div>
+              <div className="modal-form__actions">
+                <div style={{ marginLeft: 'auto' }}>
+                  <button type="submit" className="btn-primary-sm" disabled={saving || !materialFile}>{saving ? 'Uploading…' : 'Upload'}</button>
+                </div>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
 
