@@ -1441,3 +1441,177 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   .topbar .notif-bell { display: none; }
   .sidebar__notif { display: flex; padding: 0 0 8px; }
 }
+
+/* ─── PROFILE PAGE ───────────────────────────── */
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 767px) { .profile-grid { grid-template-columns: 1fr; } }
+.form-success {
+  background: rgba(74,222,128,0.1);
+  border: 1px solid rgba(74,222,128,0.3);
+  color: #4ade80;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.sidebar__profile-link {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 0;
+  transition: color 0.15s;
+}
+.sidebar__profile-link:hover { color: var(--gold); }
+
+/* ─── ANALYTICS ──────────────────────────────── */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+@media (max-width: 900px) { .analytics-grid { grid-template-columns: 1fr; } }
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 140px;
+  margin-top: 16px;
+}
+.bar-chart__col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.bar-chart__val {
+  font-size: 9px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.bar-chart__track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.bar-chart__fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.5s ease;
+  min-height: 2px;
+}
+.bar-chart__label {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ─── ENROLLMENT ─────────────────────────────── */
+.enroll-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--navy-3);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.12s;
+}
+.enroll-row:hover { background: rgba(244,180,0,0.06); }
+.enroll-row input[type="checkbox"] { accent-color: var(--gold); width: 16px; height: 16px; }
+
+/* ─── SQUAWK LOG ─────────────────────────────── */
+.squawk-item {
+  background: var(--navy-3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.squawk-item:last-child { margin-bottom: 0; }
+.squawk-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.squawk-item__date { font-size: 12px; color: var(--muted); }
+.squawk-item__reporter { font-size: 12px; color: var(--muted); margin-left: auto; }
+.squawk-item__desc { font-size: 14px; font-weight: 600; }
+.squawk-item__notes { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.aircraft-card__actions { display: flex; gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* ─── INSTRUCTOR CARDS ───────────────────────── */
+.instructor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+.instructor-card {
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  gap: 16px;
+}
+.instructor-card__avatar {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--navy-3);
+  border: 2px solid var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+.instructor-card__body { flex: 1; min-width: 0; }
+.instructor-card__name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+.instructor-card__lessons { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.instructor-card__certs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.instructor-card__bio { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.instructor-card__actions { display: flex; gap: 12px; }
+
+/* ─── WEATHER WIDGET ─────────────────────────── */
+.weather-card { margin-bottom: 0; }
+.weather-card__head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.weather-cat {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--navy);
+}
+.weather-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.weather-item__label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+.weather-item__val { font-size: 14px; font-weight: 600; }
+.weather-raw {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  padding: 8px 10px;
+  word-break: break-all;
+  border: 1px solid var(--border);
+}

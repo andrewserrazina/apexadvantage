@@ -3,6 +3,104 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import Layout from '../components/Layout'
 
+const AIRPORT = 'KHYI'
+
+function WindDir(deg) {
+  if (deg == null) return '—'
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']
+  return dirs[Math.round(deg / 22.5) % 16]
+}
+
+function flightCategory(metar) {
+  if (!metar) return null
+  const vis = parseFloat(metar.visib)
+  const ceiling = metar.clouds
+    ? metar.clouds.filter(c => ['BKN','OVC','VV'].includes(c.cover)).map(c => c.base).sort((a,b) => a-b)[0]
+    : null
+
+  if ((vis != null && vis < 1) || (ceiling != null && ceiling < 500)) return { label: 'LIFR', color: '#c084fc' }
+  if ((vis != null && vis < 3) || (ceiling != null && ceiling < 1000)) return { label: 'IFR', color: '#f87171' }
+  if ((vis != null && vis < 5) || (ceiling != null && ceiling < 3000)) return { label: 'MVFR', color: '#60a5fa' }
+  return { label: 'VFR', color: '#4ade80' }
+}
+
+function WeatherWidget() {
+  const [metar, setMetar] = useState(null)
+  const [error, setError] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchWeather() {
+      try {
+        const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${AIRPORT}&format=json`)
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        setMetar(data?.[0] ?? null)
+      } catch {
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchWeather()
+  }, [])
+
+  const cat = flightCategory(metar)
+
+  return (
+    <section className="card weather-card">
+      <div className="weather-card__head">
+        <div>
+          <h3 className="card__title" style={{ marginBottom: 2 }}>{AIRPORT} Weather</h3>
+          {metar?.reportTime && <p style={{ fontSize: 11, color: 'var(--muted)' }}>Updated {new Date(metar.reportTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC</p>}
+        </div>
+        {cat && <span className="weather-cat" style={{ background: cat.color }}>{cat.label}</span>}
+      </div>
+
+      {loading && <p className="empty-state" style={{ padding: '12px 0' }}>Loading…</p>}
+      {error && <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8 }}>Weather unavailable.</p>}
+
+      {metar && (
+        <div className="weather-grid">
+          <div className="weather-item">
+            <p className="weather-item__label">Wind</p>
+            <p className="weather-item__val">
+              {metar.wdir != null ? `${WindDir(metar.wdir)} ${metar.wdir}°` : 'Calm'}
+              {metar.wspd != null ? ` @ ${metar.wspd}kt` : ''}
+              {metar.wgst ? ` G${metar.wgst}kt` : ''}
+            </p>
+          </div>
+          <div className="weather-item">
+            <p className="weather-item__label">Visibility</p>
+            <p className="weather-item__val">{metar.visib != null ? `${metar.visib} SM` : '—'}</p>
+          </div>
+          <div className="weather-item">
+            <p className="weather-item__label">Sky</p>
+            <p className="weather-item__val">
+              {metar.clouds?.length
+                ? metar.clouds.map(c => `${c.cover} ${c.base ? c.base + '\'' : ''}`).join(' · ')
+                : 'CLR'}
+            </p>
+          </div>
+          <div className="weather-item">
+            <p className="weather-item__label">Temp / Dew</p>
+            <p className="weather-item__val">
+              {metar.temp != null ? `${metar.temp}°C` : '—'} / {metar.dewp != null ? `${metar.dewp}°C` : '—'}
+            </p>
+          </div>
+          <div className="weather-item">
+            <p className="weather-item__label">Altimeter</p>
+            <p className="weather-item__val">{metar.altim != null ? `${metar.altim.toFixed(2)} inHg` : '—'}</p>
+          </div>
+        </div>
+      )}
+      {metar?.rawOb && (
+        <p className="weather-raw">{metar.rawOb}</p>
+      )}
+    </section>
+  )
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState({ students: 0, hoursThisMonth: 0, upcomingLessons: 0 })
@@ -49,7 +147,6 @@ export default function Dashboard() {
         setTodayLessons(today ?? [])
         setRecentEntries(recent ?? [])
       } else {
-        // student
         const [{ data: hours }, { count: upcoming }, { data: today }, { data: recent }] = await Promise.all([
           supabase.from('logbook_entries').select('duration_hours').eq('student_id', profile.id).gte('date', monthStart),
           supabase.from('lessons').select('*', { count: 'exact', head: true }).eq('student_id', profile.id).gte('starts_at', now.toISOString()),
@@ -72,33 +169,16 @@ export default function Dashboard() {
       if (!enrollments?.length) return
 
       const enriched = await Promise.all(enrollments.map(async en => {
-        const { count: total } = await supabase
-          .from('syllabus_lessons')
-          .select('*', { count: 'exact', head: true })
-          .eq('syllabus_id', en.syllabus_id)
-        const { count: done } = await supabase
-          .from('lesson_completions')
-          .select('*', { count: 'exact', head: true })
-          .eq('student_id', profile.id)
-          .eq('syllabus_id', en.syllabus_id)
+        const { count: total } = await supabase.from('syllabus_lessons').select('*', { count: 'exact', head: true }).eq('syllabus_id', en.syllabus_id)
+        const { count: done } = await supabase.from('lesson_completions').select('*', { count: 'exact', head: true }).eq('student_id', profile.id).eq('syllabus_id', en.syllabus_id)
         return { ...en, total: total ?? 0, done: done ?? 0 }
       }))
       setEnrolledSyllabi(enriched)
 
-      // Upcoming ground sessions (student registered for)
-      const { data: regs } = await supabase
-        .from('ground_registrations')
-        .select('session_id')
-        .eq('email', profile.email)
+      const { data: regs } = await supabase.from('ground_registrations').select('session_id').eq('email', profile.email)
       if (regs?.length) {
         const ids = regs.map(r => r.session_id)
-        const { data: sessions } = await supabase
-          .from('ground_sessions')
-          .select('*')
-          .in('id', ids)
-          .gte('session_date', new Date().toISOString().slice(0, 10))
-          .order('session_date')
-          .limit(3)
+        const { data: sessions } = await supabase.from('ground_sessions').select('*').in('id', ids).gte('session_date', new Date().toISOString().slice(0, 10)).order('session_date').limit(3)
         setUpcomingGroundSessions(sessions ?? [])
       }
     }
@@ -135,7 +215,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Student progress section */}
       {isStudent && enrolledSyllabi.length > 0 && (
         <section className="card" style={{ marginBottom: 24 }}>
           <h3 className="card__title">My Progress</h3>
@@ -146,7 +225,7 @@ export default function Dashboard() {
                 <div key={en.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 14, fontWeight: 600 }}>{en.syllabus?.title ?? 'Syllabus'}</span>
-                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{en.done}/{en.total} lessons · {pct}%</span>
+                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>{en.done}/{en.total} · {pct}%</span>
                   </div>
                   <div className="progress-bar">
                     <div className="progress-bar__fill" style={{ width: `${pct}%` }} />
@@ -158,7 +237,9 @@ export default function Dashboard() {
         </section>
       )}
 
-      <div className="dashboard-grid">
+      <WeatherWidget />
+
+      <div className="dashboard-grid" style={{ marginTop: 24 }}>
         <section className="card">
           <h3 className="card__title">Recent Logbook Entries</h3>
           {recentEntries.length === 0
@@ -189,9 +270,7 @@ export default function Dashboard() {
                 <div key={l.id} className="activity-row">
                   <div>
                     <p className="activity-row__primary">{l.lesson_type ?? 'Lesson'}</p>
-                    <p className="activity-row__sub">
-                      {l.student?.full_name ?? l.instructor?.full_name ?? '—'}
-                    </p>
+                    <p className="activity-row__sub">{l.student?.full_name ?? l.instructor?.full_name ?? '—'}</p>
                   </div>
                   <div className="activity-row__meta">
                     <span>{new Date(l.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

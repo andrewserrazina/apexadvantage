@@ -10,6 +10,12 @@ const STATUSES = [
   { value: 'unavailable', label: 'Unavailable' },
 ]
 
+const SQUAWK_STATUSES = [
+  { value: 'open', label: 'Open' },
+  { value: 'deferred', label: 'Deferred' },
+  { value: 'resolved', label: 'Resolved' },
+]
+
 const BLANK = { tail_number: '', make: '', model: '', year: '', status: 'available', total_hours: '', last_inspection: '', notes: '' }
 
 function statusBadge(s) {
@@ -18,9 +24,16 @@ function statusBadge(s) {
   return 'badge badge--red'
 }
 
+function squawkBadge(s) {
+  if (s === 'resolved') return 'badge badge--green'
+  if (s === 'deferred') return 'badge badge--yellow'
+  return 'badge badge--red'
+}
+
 export default function Aircraft() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  const isStaff = isAdmin || profile?.role === 'instructor'
 
   const [aircraft, setAircraft] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,6 +41,13 @@ export default function Aircraft() {
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+
+  // Squawk state
+  const [squawkModal, setSquawkModal] = useState(null) // { aircraft }
+  const [squawks, setSquawks] = useState([])
+  const [squawkForm, setSquawkForm] = useState({ description: '', notes: '', status: 'open' })
+  const [squawkSaving, setSquawkSaving] = useState(false)
+  const [addingSquawk, setAddingSquawk] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -37,6 +57,43 @@ export default function Aircraft() {
   }
 
   useEffect(() => { load() }, [])
+
+  async function openSquawks(ac) {
+    setSquawkModal({ aircraft: ac })
+    setAddingSquawk(false)
+    setSquawkForm({ description: '', notes: '', status: 'open' })
+    const { data } = await supabase
+      .from('squawks')
+      .select('*, reporter:reported_by(full_name)')
+      .eq('aircraft_id', ac.id)
+      .order('created_at', { ascending: false })
+    setSquawks(data ?? [])
+  }
+
+  async function handleAddSquawk(e) {
+    e.preventDefault()
+    setSquawkSaving(true)
+    const { error } = await supabase.from('squawks').insert({
+      aircraft_id: squawkModal.aircraft.id,
+      description: squawkForm.description,
+      notes: squawkForm.notes || null,
+      status: squawkForm.status,
+      reported_by: profile.id,
+    })
+    if (!error) {
+      setSquawkForm({ description: '', notes: '', status: 'open' })
+      setAddingSquawk(false)
+      const { data } = await supabase.from('squawks').select('*, reporter:reported_by(full_name)').eq('aircraft_id', squawkModal.aircraft.id).order('created_at', { ascending: false })
+      setSquawks(data ?? [])
+    }
+    setSquawkSaving(false)
+  }
+
+  async function updateSquawkStatus(squawkId, status) {
+    await supabase.from('squawks').update({ status, ...(status === 'resolved' ? { resolved_at: new Date().toISOString() } : {}) }).eq('id', squawkId)
+    const { data } = await supabase.from('squawks').select('*, reporter:reported_by(full_name)').eq('aircraft_id', squawkModal.aircraft.id).order('created_at', { ascending: false })
+    setSquawks(data ?? [])
+  }
 
   function openCreate() {
     setForm(BLANK)
@@ -95,6 +152,12 @@ export default function Aircraft() {
     load()
   }
 
+  const openSquawkCount = (acId) => {
+    // We don't have squawks loaded for all aircraft — just show a dot if there are open ones
+    // This would be enhanced with a join
+    return null
+  }
+
   return (
     <Layout>
       <div className="page-header">
@@ -144,14 +207,20 @@ export default function Aircraft() {
                 </div>
               </div>
               {ac.notes && <p className="aircraft-card__notes">{ac.notes}</p>}
-              {isAdmin && (
-                <button className="btn-link" style={{ marginTop: 12 }} onClick={() => openEdit(ac)}>Edit</button>
-              )}
+              <div className="aircraft-card__actions">
+                <button className="btn-link" onClick={() => openSquawks(ac)}>
+                  Squawk Log
+                </button>
+                {isAdmin && (
+                  <button className="btn-link" onClick={() => openEdit(ac)}>Edit</button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Aircraft create/edit modal */}
       {modal && (
         <Modal title={modal.mode === 'create' ? 'Add Aircraft' : `Edit ${modal.ac?.tail_number}`} onClose={closeModal}>
           <form onSubmit={handleSave} className="modal-form">
@@ -206,6 +275,66 @@ export default function Aircraft() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Squawk log modal */}
+      {squawkModal && (
+        <Modal title={`Squawk Log — ${squawkModal.aircraft.tail_number}`} onClose={() => setSquawkModal(null)}>
+          <div className="modal-form">
+            {squawks.length === 0 && !addingSquawk && (
+              <p className="empty-state" style={{ marginBottom: 16 }}>No squawks logged.</p>
+            )}
+
+            {squawks.map(sq => (
+              <div key={sq.id} className="squawk-item">
+                <div className="squawk-item__head">
+                  <span className={squawkBadge(sq.status)}>{sq.status}</span>
+                  <span className="squawk-item__date">{new Date(sq.created_at).toLocaleDateString()}</span>
+                  {sq.reporter?.full_name && <span className="squawk-item__reporter">by {sq.reporter.full_name}</span>}
+                </div>
+                <p className="squawk-item__desc">{sq.description}</p>
+                {sq.notes && <p className="squawk-item__notes">{sq.notes}</p>}
+                {isStaff && sq.status !== 'resolved' && (
+                  <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                    {sq.status === 'open' && (
+                      <button className="btn-link" style={{ fontSize: 12 }} onClick={() => updateSquawkStatus(sq.id, 'deferred')}>Defer</button>
+                    )}
+                    <button className="btn-link" style={{ fontSize: 12, color: '#4ade80' }} onClick={() => updateSquawkStatus(sq.id, 'resolved')}>Resolve</button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {addingSquawk ? (
+              <form onSubmit={handleAddSquawk} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea value={squawkForm.description} onChange={e => setSquawkForm(f => ({ ...f, description: e.target.value }))} rows={2} required placeholder="Describe the issue…" />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Initial Status</label>
+                    <select value={squawkForm.status} onChange={e => setSquawkForm(f => ({ ...f, status: e.target.value }))}>
+                      {SQUAWK_STATUSES.filter(s => s.value !== 'resolved').map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Notes (optional)</label>
+                    <input type="text" value={squawkForm.notes} onChange={e => setSquawkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Additional context…" />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setAddingSquawk(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary-sm" disabled={squawkSaving}>{squawkSaving ? 'Logging…' : 'Log Squawk'}</button>
+                </div>
+              </form>
+            ) : (
+              <button className="btn-secondary" style={{ marginTop: 16, width: '100%' }} onClick={() => setAddingSquawk(true)}>
+                + Log Squawk
+              </button>
+            )}
+          </div>
         </Modal>
       )}
     </Layout>
