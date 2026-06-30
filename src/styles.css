@@ -605,6 +605,7 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   max-height: 90vh;
   overflow-y: auto;
 }
+.modal--wide { max-width: 720px; }
 .modal__header {
   display: flex;
   align-items: center;
@@ -1721,6 +1722,41 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
 .attend-link-btn:hover { opacity: 0.8; }
 .attend-link-btn--in { background: rgba(74,222,128,0.15); color: #4ade80; }
 .attend-link-btn--out { background: rgba(96,165,250,0.15); color: #60a5fa; }
+
+/* ─── GROUND SCHOOL CATEGORY FILTER ─────────── */
+.gs-filter-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 24px 24px;
+  max-width: 960px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+.gs-filter-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.gs-filter-btn:hover { border-color: var(--gold); color: var(--gold); }
+.gs-filter-btn--active { background: rgba(244,180,0,0.12); border-color: rgba(244,180,0,0.4); color: var(--gold); }
+
+/* ─── CATEGORY BADGE ─────────────────────────── */
+.gs-cat-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
 
 /* ─── GOOGLE MEET BUTTON ─────────────────────── */
 .gs-meet-btn {
