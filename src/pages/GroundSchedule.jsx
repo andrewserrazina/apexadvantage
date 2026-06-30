@@ -4,17 +4,18 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import ApexLogo from '../components/ApexLogo'
+import { sendRegistrationConfirmation, sendWaitlistConfirmation, sendWaitlistPromotion, sendBulkMessage } from '../lib/email'
 
 const DURATIONS = [60, 90, 120, 150, 180]
+const CATEGORIES = ['general', 'private', 'instrument', 'commercial']
+const CATEGORY_LABELS = { general: 'General', private: 'Private Pilot', instrument: 'Instrument', commercial: 'Commercial' }
+const CATEGORY_COLORS = { general: '#94a3b8', private: '#60a5fa', instrument: '#a78bfa', commercial: '#4ade80' }
+const FREQUENCIES = [{ value: 'weekly', label: 'Weekly' }, { value: 'biweekly', label: 'Every 2 Weeks' }, { value: 'monthly', label: 'Monthly' }]
 
 const BLANK_SESSION = {
-  title: '',
-  description: '',
-  location: '',
-  meet_link: '',
-  scheduled_at: '',
-  duration_minutes: 90,
-  max_students: 20,
+  title: '', description: '', location: '', meet_link: '',
+  scheduled_at: '', duration_minutes: 90, max_students: 20, category: 'general',
+  repeat: false, frequency: 'weekly', occurrences: 4,
 }
 
 const BLANK_REG = { full_name: '', email: '' }
@@ -26,15 +27,19 @@ function fmt(dt) {
   })
 }
 
-function attendUrl(type, token) {
-  return `${window.location.origin}/attend/${type}/${token}`
-}
-
 function statusBadge(s) {
   if (s === 'completed') return { label: 'Completed', color: '#4ade80' }
   if (s === 'checked_in') return { label: 'Checked In', color: '#60a5fa' }
   if (s === 'no_show') return { label: 'No Show', color: '#f87171' }
   return { label: 'Registered', color: 'var(--muted)' }
+}
+
+function addInterval(dateStr, frequency, n) {
+  const d = new Date(dateStr)
+  if (frequency === 'weekly') d.setDate(d.getDate() + 7 * n)
+  else if (frequency === 'biweekly') d.setDate(d.getDate() + 14 * n)
+  else if (frequency === 'monthly') d.setMonth(d.getMonth() + n)
+  return d.toISOString()
 }
 
 export default function GroundSchedule() {
@@ -49,18 +54,25 @@ export default function GroundSchedule() {
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(BLANK_SESSION)
   const [regForm, setRegForm] = useState(BLANK_REG)
+  const [manualAddForm, setManualAddForm] = useState(BLANK_REG)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [regSuccess, setRegSuccess] = useState(false)
   const [registrants, setRegistrants] = useState([])
   const [activeSession, setActiveSession] = useState(null)
-  const [copiedLink, setCopiedLink] = useState(null) // 'in-{id}' | 'out-{id}'
+  const [copiedLink, setCopiedLink] = useState(null)
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [bulkSubject, setBulkSubject] = useState('')
+  const [bulkMessage, setBulkMessage] = useState('')
+  const [bulkSent, setBulkSent] = useState(false)
+  const [manualAddError, setManualAddError] = useState('')
+  const [manualAddSaving, setManualAddSaving] = useState(false)
 
   async function load() {
     const now = new Date().toISOString()
     const [{ data: upcoming }, { data: past }] = await Promise.all([
-      supabase.from('ground_sessions').select('*, ground_registrations(id)').gte('scheduled_at', now).order('scheduled_at'),
-      supabase.from('ground_sessions').select('*, ground_registrations(id)').lt('scheduled_at', now).order('scheduled_at', { ascending: false }),
+      supabase.from('ground_sessions').select('*, ground_registrations(id, is_waitlisted)').gte('scheduled_at', now).order('scheduled_at'),
+      supabase.from('ground_sessions').select('*, ground_registrations(id, is_waitlisted)').lt('scheduled_at', now).order('scheduled_at', { ascending: false }),
     ])
     setSessions(upcoming ?? [])
     setPastSessions(past ?? [])
@@ -74,7 +86,7 @@ export default function GroundSchedule() {
   }
 
   function copyAttendLink(type, token, id) {
-    navigator.clipboard.writeText(attendUrl(type, token))
+    navigator.clipboard.writeText(`${window.location.origin}/attend/${type}/${token}`)
     setCopiedLink(`${type}-${id}`)
     setTimeout(() => setCopiedLink(null), 2000)
   }
@@ -84,22 +96,15 @@ export default function GroundSchedule() {
   function field(k, v) { setForm(f => ({ ...f, [k]: v })) }
   function regField(k, v) { setRegForm(f => ({ ...f, [k]: v })) }
 
-  function openCreate() {
-    setForm(BLANK_SESSION)
-    setFormError('')
-    setModal('create')
-  }
+  function openCreate() { setForm(BLANK_SESSION); setFormError(''); setModal('create') }
 
   function openEdit(s) {
     setActiveSession(s)
     setForm({
-      title: s.title,
-      description: s.description ?? '',
-      location: s.location ?? '',
-      meet_link: s.meet_link ?? '',
-      scheduled_at: new Date(s.scheduled_at).toISOString().slice(0, 16),
-      duration_minutes: s.duration_minutes,
-      max_students: s.max_students,
+      title: s.title, description: s.description ?? '', location: s.location ?? '',
+      meet_link: s.meet_link ?? '', scheduled_at: new Date(s.scheduled_at).toISOString().slice(0, 16),
+      duration_minutes: s.duration_minutes, max_students: s.max_students,
+      category: s.category ?? 'general', repeat: false, frequency: 'weekly', occurrences: 4,
     })
     setFormError('')
     setModal('edit')
@@ -115,13 +120,28 @@ export default function GroundSchedule() {
 
   async function openRegistrants(s) {
     setActiveSession(s)
+    await refreshRegistrantsFor(s.id)
+    setManualAddForm(BLANK_REG)
+    setManualAddError('')
+    setBulkSubject('')
+    setBulkMessage('')
+    setBulkSent(false)
+    setModal('registrants')
+  }
+
+  async function refreshRegistrantsFor(sessionId) {
     const { data } = await supabase
       .from('ground_registrations')
       .select('*')
-      .eq('session_id', s.id)
+      .eq('session_id', sessionId)
       .order('registered_at')
     setRegistrants(data ?? [])
-    setModal('registrants')
+    return data ?? []
+  }
+
+  async function refreshRegistrants() {
+    if (!activeSession) return
+    await refreshRegistrantsFor(activeSession.id)
   }
 
   function closeModal() { setModal(null); setActiveSession(null); setFormError('') }
@@ -130,17 +150,24 @@ export default function GroundSchedule() {
     e.preventDefault()
     setSaving(true)
     setFormError('')
-    const { error } = await supabase.from('ground_sessions').insert({
-      title: form.title,
-      description: form.description || null,
-      location: form.location || null,
-      meet_link: form.meet_link || null,
-      scheduled_at: form.scheduled_at,
-      duration_minutes: parseInt(form.duration_minutes),
-      max_students: parseInt(form.max_students),
-    })
-    setSaving(false)
-    if (error) { setFormError(error.message); return }
+    const base = {
+      title: form.title, description: form.description || null, location: form.location || null,
+      meet_link: form.meet_link || null, duration_minutes: parseInt(form.duration_minutes),
+      max_students: parseInt(form.max_students), category: form.category,
+    }
+    if (form.repeat) {
+      const inserts = Array.from({ length: parseInt(form.occurrences) }, (_, i) => ({
+        ...base,
+        scheduled_at: addInterval(form.scheduled_at, form.frequency, i),
+      }))
+      const { error } = await supabase.from('ground_sessions').insert(inserts)
+      setSaving(false)
+      if (error) { setFormError(error.message); return }
+    } else {
+      const { error } = await supabase.from('ground_sessions').insert({ ...base, scheduled_at: form.scheduled_at })
+      setSaving(false)
+      if (error) { setFormError(error.message); return }
+    }
     closeModal()
     load()
   }
@@ -150,13 +177,10 @@ export default function GroundSchedule() {
     setSaving(true)
     setFormError('')
     const { error } = await supabase.from('ground_sessions').update({
-      title: form.title,
-      description: form.description || null,
-      location: form.location || null,
-      meet_link: form.meet_link || null,
-      scheduled_at: form.scheduled_at,
-      duration_minutes: parseInt(form.duration_minutes),
-      max_students: parseInt(form.max_students),
+      title: form.title, description: form.description || null, location: form.location || null,
+      meet_link: form.meet_link || null, scheduled_at: form.scheduled_at,
+      duration_minutes: parseInt(form.duration_minutes), max_students: parseInt(form.max_students),
+      category: form.category,
     }).eq('id', activeSession.id)
     setSaving(false)
     if (error) { setFormError(error.message); return }
@@ -174,44 +198,129 @@ export default function GroundSchedule() {
     e.preventDefault()
     setSaving(true)
     setFormError('')
+    const spots = spotsLeft(activeSession)
+    const goWaitlist = spots <= 0
+
     const { error } = await supabase.from('ground_registrations').insert({
       session_id: activeSession.id,
       full_name: regForm.full_name,
       email: regForm.email,
+      is_waitlisted: goWaitlist,
     })
-    setSaving(false)
     if (error) {
+      setSaving(false)
       setFormError(error.message.includes('unique') ? 'This email is already registered for this session.' : error.message)
       return
     }
-    setRegSuccess(true)
+
+    const { data: newReg } = await supabase
+      .from('ground_registrations')
+      .select('*')
+      .eq('session_id', activeSession.id)
+      .eq('email', regForm.email)
+      .single()
+
+    if (newReg) {
+      if (goWaitlist) {
+        sendWaitlistConfirmation(newReg, activeSession)
+      } else {
+        sendRegistrationConfirmation(newReg, activeSession)
+      }
+    }
+
+    setSaving(false)
+    setRegSuccess(goWaitlist ? 'waitlist' : 'registered')
+    load()
+  }
+
+  async function handleManualAdd(e) {
+    e.preventDefault()
+    setManualAddSaving(true)
+    setManualAddError('')
+    const { error } = await supabase.from('ground_registrations').insert({
+      session_id: activeSession.id,
+      full_name: manualAddForm.full_name,
+      email: manualAddForm.email,
+      is_waitlisted: false,
+    })
+    if (error) {
+      setManualAddSaving(false)
+      setManualAddError(error.message.includes('unique') ? 'Already registered.' : error.message)
+      return
+    }
+    const { data: newReg } = await supabase
+      .from('ground_registrations')
+      .select('*')
+      .eq('session_id', activeSession.id)
+      .eq('email', manualAddForm.email)
+      .single()
+    if (newReg) sendRegistrationConfirmation(newReg, activeSession)
+    setManualAddSaving(false)
+    setManualAddForm(BLANK_REG)
+    await refreshRegistrants()
+    load()
+  }
+
+  async function handlePromoteWaitlist(reg) {
+    await supabase.from('ground_registrations').update({ is_waitlisted: false }).eq('id', reg.id)
+    sendWaitlistPromotion(reg, activeSession)
+    await refreshRegistrants()
     load()
   }
 
   async function markNoShow(regId) {
     await supabase.from('ground_registrations').update({ attendance_status: 'no_show' }).eq('id', regId)
-    const { data } = await supabase.from('ground_registrations').select('*').eq('session_id', activeSession.id).order('registered_at')
-    setRegistrants(data ?? [])
+    await refreshRegistrants()
   }
 
-  async function refreshRegistrants() {
-    if (!activeSession) return
-    const { data } = await supabase.from('ground_registrations').select('*').eq('session_id', activeSession.id).order('registered_at')
-    setRegistrants(data ?? [])
+  async function handleBulkSend(e) {
+    e.preventDefault()
+    setSaving(true)
+    const confirmed = registrants.filter(r => !r.is_waitlisted)
+    await sendBulkMessage(confirmed, activeSession, bulkSubject, bulkMessage)
+    setSaving(false)
+    setBulkSent(true)
   }
 
-  const spotsLeft = (s) => s.max_students - (s.ground_registrations?.length ?? 0)
+  function exportCSV() {
+    const headers = ['Name', 'Email', 'Status', 'Waitlisted', 'Registered At', 'Checked In', 'Checked Out']
+    const rows = registrants.map(r => [
+      r.full_name,
+      r.email,
+      r.attendance_status ?? 'registered',
+      r.is_waitlisted ? 'Yes' : 'No',
+      r.registered_at ? new Date(r.registered_at).toLocaleString() : '',
+      r.checked_in_at ? new Date(r.checked_in_at).toLocaleString() : '',
+      r.checked_out_at ? new Date(r.checked_out_at).toLocaleString() : '',
+    ])
+    const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeSession.title.replace(/[^a-z0-9]/gi, '_')}_registrants.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const confirmedCount = (s) => s.ground_registrations?.filter(r => !r.is_waitlisted).length ?? 0
+  const waitlistCount = (s) => s.ground_registrations?.filter(r => r.is_waitlisted).length ?? 0
+  const spotsLeft = (s) => s.max_students - confirmedCount(s)
 
   const attendanceSummary = (regs) => {
-    const completed = regs.filter(r => r.attendance_status === 'completed').length
-    const checkedIn = regs.filter(r => r.attendance_status === 'checked_in').length
-    const noShow = regs.filter(r => r.attendance_status === 'no_show').length
-    return { completed, checkedIn, noShow }
+    const confirmed = regs.filter(r => !r.is_waitlisted)
+    return {
+      completed: confirmed.filter(r => r.attendance_status === 'completed').length,
+      checkedIn: confirmed.filter(r => r.attendance_status === 'checked_in').length,
+      noShow: confirmed.filter(r => r.attendance_status === 'no_show').length,
+      total: confirmed.length,
+    }
   }
+
+  const filteredSessions = categoryFilter === 'all' ? sessions : sessions.filter(s => s.category === categoryFilter)
 
   return (
     <div className="public-page">
-      {/* Header */}
       <header className="public-header">
         <div className="public-header__inner">
           <Link to="/" className="public-header__brand">
@@ -237,7 +346,6 @@ export default function GroundSchedule() {
         </div>
       </header>
 
-      {/* Hero */}
       <div className="public-hero">
         <p className="public-hero__eyebrow">Something Extraordinary</p>
         <h1 className="public-hero__title">IS TAKING<br /><em>FLIGHT.</em></h1>
@@ -248,11 +356,23 @@ export default function GroundSchedule() {
         </p>
       </div>
 
-      {/* Sessions */}
+      {/* Category Filter */}
+      <div className="gs-filter-bar">
+        {['all', ...CATEGORIES].map(c => (
+          <button
+            key={c}
+            className={`gs-filter-btn${categoryFilter === c ? ' gs-filter-btn--active' : ''}`}
+            onClick={() => setCategoryFilter(c)}
+          >
+            {c === 'all' ? 'All Sessions' : CATEGORY_LABELS[c]}
+          </button>
+        ))}
+      </div>
+
       <div className="public-content">
         {loading ? (
           <p className="empty-state">Loading sessions…</p>
-        ) : sessions.length === 0 && !showPast ? (
+        ) : filteredSessions.length === 0 && !showPast ? (
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
             <p className="empty-state" style={{ marginBottom: 16 }}>No upcoming sessions scheduled. Check back soon!</p>
             {pastSessions.length > 0 && (
@@ -262,17 +382,26 @@ export default function GroundSchedule() {
         ) : (
           <>
             <div className="gs-grid">
-              {sessions.map(s => {
+              {filteredSessions.map(s => {
                 const spots = spotsLeft(s)
                 const full = spots <= 0
+                const wl = waitlistCount(s)
+                const cat = s.category ?? 'general'
                 return (
                   <div key={s.id} className={`gs-card${full ? ' gs-card--full' : ''}`}>
                     <div className="gs-card__head">
-                      <div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span className="gs-cat-badge" style={{ background: `${CATEGORY_COLORS[cat]}22`, color: CATEGORY_COLORS[cat], borderColor: `${CATEGORY_COLORS[cat]}44` }}>
+                            {CATEGORY_LABELS[cat]}
+                          </span>
+                        </div>
                         <h3 className="gs-card__title">{s.title}</h3>
                         <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
                       </div>
-                      <div className="gs-card__badge">{full ? 'Full' : `${spots} spot${spots !== 1 ? 's' : ''} left`}</div>
+                      <div className="gs-card__badge">
+                        {full ? (wl > 0 ? `Full · ${wl} waiting` : 'Full') : `${spots} spot${spots !== 1 ? 's' : ''} left`}
+                      </div>
                     </div>
                     {s.description && <p className="gs-card__desc">{s.description}</p>}
                     <div className="gs-card__meta">
@@ -290,14 +419,14 @@ export default function GroundSchedule() {
                       {isAdmin ? (
                         <>
                           <button className="btn-link" onClick={() => openRegistrants(s)}>
-                            {s.ground_registrations?.length ?? 0} registered
+                            {confirmedCount(s)} registered{wl > 0 ? ` · ${wl} waitlist` : ''}
                           </button>
                           <button className="btn-link" onClick={() => openEdit(s)}>Edit</button>
                           <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
                         </>
                       ) : (
-                        <button className="btn-primary-sm" disabled={full} onClick={() => openRegister(s)}>
-                          {full ? 'Class Full' : 'Sign Up'}
+                        <button className="btn-primary-sm" onClick={() => openRegister(s)}>
+                          {full ? 'Join Waitlist' : 'Sign Up'}
                         </button>
                       )}
                     </div>
@@ -306,7 +435,6 @@ export default function GroundSchedule() {
               })}
             </div>
 
-            {/* Past sessions */}
             {pastSessions.length > 0 && (
               <div style={{ marginTop: 48 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -324,7 +452,7 @@ export default function GroundSchedule() {
                             <h3 className="gs-card__title">{s.title}</h3>
                             <p className="gs-card__time">{fmt(s.scheduled_at)}</p>
                           </div>
-                          <div className="gs-card__badge">{s.ground_registrations?.length ?? 0} attended</div>
+                          <div className="gs-card__badge">{confirmedCount(s)} attended</div>
                         </div>
                         {s.description && <p className="gs-card__desc">{s.description}</p>}
                         <div className="gs-card__meta">
@@ -333,7 +461,7 @@ export default function GroundSchedule() {
                         </div>
                         {isAdmin && (
                           <div className="gs-card__actions">
-                            <button className="btn-link" onClick={() => openRegistrants(s)}>{s.ground_registrations?.length ?? 0} registered</button>
+                            <button className="btn-link" onClick={() => openRegistrants(s)}>{confirmedCount(s)} registered</button>
                             <button className="btn-link" style={{ color: '#f87171' }} onClick={() => handleDelete(s.id)}>Delete</button>
                           </div>
                         )}
@@ -355,6 +483,18 @@ export default function GroundSchedule() {
             <div className="form-group">
               <label>Session Title</label>
               <input type="text" value={form.title} onChange={e => field('title', e.target.value)} required placeholder="e.g. Private Pilot – Aerodynamics" />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Category</label>
+                <select value={form.category} onChange={e => field('category', e.target.value)}>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Max Students</label>
+                <input type="number" value={form.max_students} onChange={e => field('max_students', e.target.value)} min={1} max={100} required />
+              </div>
             </div>
             <div className="form-group">
               <label>Description</label>
@@ -378,22 +518,37 @@ export default function GroundSchedule() {
                 <input type="text" value={form.location} onChange={e => field('location', e.target.value)} placeholder="e.g. Apex Aviation – KHYI" />
               </div>
               <div className="form-group">
-                <label>Max Students</label>
-                <input type="number" value={form.max_students} onChange={e => field('max_students', e.target.value)} min={1} max={100} required />
+                <label>Google Meet Link</label>
+                <input type="url" value={form.meet_link} onChange={e => field('meet_link', e.target.value)} placeholder="https://meet.google.com/xxx-xxxx-xxx" />
               </div>
             </div>
-            <div className="form-group">
-              <label>Google Meet Link</label>
-              <input type="url" value={form.meet_link} onChange={e => field('meet_link', e.target.value)} placeholder="https://meet.google.com/xxx-xxxx-xxx" />
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                Create a meeting in Google Meet or Google Calendar, then paste the link here.
-              </p>
-            </div>
+            {modal === 'create' && (
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.repeat} onChange={e => field('repeat', e.target.checked)} />
+                  Create as recurring series
+                </label>
+                {form.repeat && (
+                  <div className="form-row" style={{ marginTop: 10 }}>
+                    <div className="form-group">
+                      <label>Frequency</label>
+                      <select value={form.frequency} onChange={e => field('frequency', e.target.value)}>
+                        {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Occurrences</label>
+                      <input type="number" value={form.occurrences} onChange={e => field('occurrences', e.target.value)} min={2} max={52} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="modal-form__actions">
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="btn-primary-sm" disabled={saving}>
-                  {saving ? 'Saving…' : modal === 'create' ? 'Create Session' : 'Save Changes'}
+                  {saving ? 'Saving…' : modal === 'create' ? (form.repeat ? `Create ${form.occurrences} Sessions` : 'Create Session') : 'Save Changes'}
                 </button>
               </div>
             </div>
@@ -401,31 +556,47 @@ export default function GroundSchedule() {
         </Modal>
       )}
 
-      {/* Register Modal */}
+      {/* Register / Waitlist Modal */}
       {modal === 'register' && (
-        <Modal title={`Sign Up — ${activeSession?.title}`} onClose={closeModal}>
+        <Modal title={`${spotsLeft(activeSession) <= 0 ? 'Join Waitlist' : 'Sign Up'} — ${activeSession?.title}`} onClose={closeModal}>
           {regSuccess ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-              <h3 style={{ color: 'var(--gold)', marginBottom: 8 }}>You're registered!</h3>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>{regSuccess === 'waitlist' ? '📋' : '✅'}</div>
+              <h3 style={{ color: regSuccess === 'waitlist' ? '#fbbf24' : 'var(--gold)', marginBottom: 8 }}>
+                {regSuccess === 'waitlist' ? "You're on the waitlist!" : "You're registered!"}
+              </h3>
               <p style={{ color: 'var(--muted)', marginBottom: 4 }}>{fmt(activeSession.scheduled_at)}</p>
               {activeSession.location && <p style={{ color: 'var(--muted)', marginBottom: 8 }}>{activeSession.location}</p>}
-              {activeSession.meet_link && (
-                <a href={activeSession.meet_link} target="_blank" rel="noopener noreferrer" className="gs-meet-btn" style={{ margin: '0 auto 16px', display: 'inline-flex' }}>
-                  Join Google Meet
-                </a>
+              {regSuccess === 'waitlist' ? (
+                <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 24 }}>
+                  This session is full. We'll email you if a spot opens up — no payment needed until you're confirmed.
+                </p>
+              ) : (
+                <>
+                  {activeSession.meet_link && (
+                    <a href={activeSession.meet_link} target="_blank" rel="noopener noreferrer" className="gs-meet-btn" style={{ margin: '0 auto 16px', display: 'inline-flex' }}>
+                      Join Google Meet
+                    </a>
+                  )}
+                  <p style={{ color: 'var(--text)', marginBottom: 8 }}>
+                    Please bring <strong style={{ color: 'var(--gold)' }}>$25 cash or card</strong> to the session.
+                  </p>
+                  <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 24 }}>
+                    Check your email for your attendance links to confirm course credit.
+                  </p>
+                </>
               )}
-              <p style={{ color: 'var(--text)', marginBottom: 8 }}>
-                Please bring <strong style={{ color: 'var(--gold)' }}>$25 cash or card</strong> to the session.
-              </p>
-              <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 24 }}>
-                Your instructor will share check-in and check-out links before the session to confirm your attendance.
-              </p>
               <button className="btn-primary-sm" onClick={closeModal}>Done</button>
             </div>
           ) : (
             <form onSubmit={handleRegister} className="modal-form">
               {formError && <div className="form-error">{formError}</div>}
+              {spotsLeft(activeSession) <= 0 && (
+                <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
+                  <p style={{ color: '#fbbf24', fontWeight: 600, marginBottom: 2 }}>This session is full</p>
+                  <p style={{ color: 'var(--muted)', fontSize: 13 }}>Join the waitlist and we'll email you if a spot opens up.</p>
+                </div>
+              )}
               <p style={{ color: 'var(--muted)', marginBottom: 16, fontSize: 14 }}>
                 {fmt(activeSession.scheduled_at)}{activeSession.location ? ` · ${activeSession.location}` : ''}
               </p>
@@ -437,14 +608,18 @@ export default function GroundSchedule() {
                 <label>Email Address</label>
                 <input type="email" value={regForm.email} onChange={e => regField('email', e.target.value)} required placeholder="jane@example.com" />
               </div>
-              <div style={{ background: 'var(--navy-3)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-                <p style={{ color: 'var(--gold)', fontWeight: 600, marginBottom: 4 }}>💵 $25 due at the door</p>
-                <p style={{ color: 'var(--muted)', fontSize: 13 }}>Payment is collected in-person. Cash or card accepted.</p>
-              </div>
+              {spotsLeft(activeSession) > 0 && (
+                <div style={{ background: 'var(--navy-3)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+                  <p style={{ color: 'var(--gold)', fontWeight: 600, marginBottom: 4 }}>💵 $25 due at the door</p>
+                  <p style={{ color: 'var(--muted)', fontSize: 13 }}>Payment is collected in-person. Cash or card accepted.</p>
+                </div>
+              )}
               <div className="modal-form__actions">
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                  <button type="submit" className="btn-primary-sm" disabled={saving}>{saving ? 'Registering…' : 'Register'}</button>
+                  <button type="submit" className="btn-primary-sm" disabled={saving}>
+                    {saving ? 'Saving…' : spotsLeft(activeSession) <= 0 ? 'Join Waitlist' : 'Register'}
+                  </button>
                 </div>
               </div>
             </form>
@@ -452,11 +627,11 @@ export default function GroundSchedule() {
         </Modal>
       )}
 
-      {/* Registrants + Attendance Modal */}
+      {/* Registrants + Admin Tools Modal */}
       {modal === 'registrants' && (
-        <Modal title={`Registrants — ${activeSession?.title}`} onClose={closeModal}>
-          <div style={{ marginBottom: 16 }}>
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>{fmt(activeSession.scheduled_at)}</p>
+        <Modal title={`Registrants — ${activeSession?.title}`} onClose={closeModal} wide>
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>{fmt(activeSession.scheduled_at)}</p>
             {registrants.length > 0 && (() => {
               const s = attendanceSummary(registrants)
               return (
@@ -464,57 +639,149 @@ export default function GroundSchedule() {
                   <span style={{ color: '#4ade80' }}>✓ {s.completed} completed</span>
                   <span style={{ color: '#60a5fa' }}>↑ {s.checkedIn} checked in</span>
                   <span style={{ color: '#f87171' }}>✗ {s.noShow} no-show</span>
-                  <span style={{ color: 'var(--muted)' }}>{registrants.length - s.completed - s.checkedIn - s.noShow} pending</span>
+                  <span style={{ color: 'var(--muted)' }}>{s.total - s.completed - s.checkedIn - s.noShow} pending</span>
                 </div>
               )
             })()}
           </div>
 
-          {registrants.length === 0 ? (
-            <p className="empty-state">No registrations yet.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {registrants.map(r => {
-                const badge = statusBadge(r.attendance_status ?? 'registered')
-                return (
+          {/* Confirmed Registrants */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Confirmed ({registrants.filter(r => !r.is_waitlisted).length})
+              </h4>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn-link" style={{ fontSize: 12 }} onClick={exportCSV}>⬇ Export CSV</button>
+                <button className="btn-link" style={{ fontSize: 12 }} onClick={() => setModal('bulk')}>✉ Message All</button>
+              </div>
+            </div>
+            {registrants.filter(r => !r.is_waitlisted).length === 0 ? (
+              <p className="empty-state" style={{ fontSize: 13 }}>No confirmed registrants yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {registrants.filter(r => !r.is_waitlisted).map(r => {
+                  const badge = statusBadge(r.attendance_status ?? 'registered')
+                  return (
+                    <div key={r.id} className="registrant-row">
+                      <div className="registrant-row__info">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <strong style={{ fontSize: 14 }}>{r.full_name}</strong>
+                          <span className="registrant-badge" style={{ color: badge.color, borderColor: badge.color }}>{badge.label}</span>
+                        </div>
+                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>{r.email}</p>
+                        {r.checked_in_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>In: {new Date(r.checked_in_at).toLocaleTimeString()}</p>}
+                        {r.checked_out_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>Out: {new Date(r.checked_out_at).toLocaleTimeString()}</p>}
+                      </div>
+                      <div className="registrant-row__actions">
+                        <button className="attend-link-btn attend-link-btn--in" onClick={() => copyAttendLink('in', r.check_in_token, r.id)} title="Copy check-in link">
+                          {copiedLink === `in-${r.id}` ? '✓ Copied' : '↓ Check-In'}
+                        </button>
+                        <button className="attend-link-btn attend-link-btn--out" onClick={() => copyAttendLink('out', r.check_out_token, r.id)} title="Copy check-out link">
+                          {copiedLink === `out-${r.id}` ? '✓ Copied' : '↑ Check-Out'}
+                        </button>
+                        {(r.attendance_status === 'registered' || !r.attendance_status) && (
+                          <button className="btn-link" style={{ fontSize: 12, color: '#f87171' }} onClick={() => markNoShow(r.id)}>No-Show</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Waitlist */}
+          {registrants.filter(r => r.is_waitlisted).length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                Waitlist ({registrants.filter(r => r.is_waitlisted).length})
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {registrants.filter(r => r.is_waitlisted).map((r, i) => (
                   <div key={r.id} className="registrant-row">
                     <div className="registrant-row__info">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>#{i + 1}</span>
                         <strong style={{ fontSize: 14 }}>{r.full_name}</strong>
-                        <span className="registrant-badge" style={{ color: badge.color, borderColor: badge.color }}>{badge.label}</span>
                       </div>
                       <p style={{ fontSize: 13, color: 'var(--muted)' }}>{r.email}</p>
-                      {r.checked_in_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>In: {new Date(r.checked_in_at).toLocaleTimeString()}</p>}
-                      {r.checked_out_at && <p style={{ fontSize: 11, color: 'var(--muted)' }}>Out: {new Date(r.checked_out_at).toLocaleTimeString()}</p>}
                     </div>
                     <div className="registrant-row__actions">
                       <button
-                        className="attend-link-btn attend-link-btn--in"
-                        onClick={() => copyAttendLink('in', r.check_in_token, r.id)}
-                        title="Copy check-in link"
+                        className="btn-primary-sm"
+                        style={{ fontSize: 12, padding: '4px 10px' }}
+                        onClick={() => handlePromoteWaitlist(r)}
+                        disabled={spotsLeft(activeSession) <= 0}
                       >
-                        {copiedLink === `in-${r.id}` ? '✓ Copied' : '↓ Check-In'}
+                        Promote
                       </button>
-                      <button
-                        className="attend-link-btn attend-link-btn--out"
-                        onClick={() => copyAttendLink('out', r.check_out_token, r.id)}
-                        title="Copy check-out link"
-                      >
-                        {copiedLink === `out-${r.id}` ? '✓ Copied' : '↑ Check-Out'}
-                      </button>
-                      {(r.attendance_status === 'registered' || !r.attendance_status) && (
-                        <button className="btn-link" style={{ fontSize: 12, color: '#f87171' }} onClick={() => markNoShow(r.id)}>No-Show</button>
-                      )}
                     </div>
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Manual Add */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 4 }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Manually Add Registrant</h4>
+            <form onSubmit={handleManualAdd} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {manualAddError && <div className="form-error" style={{ width: '100%' }}>{manualAddError}</div>}
+              <div className="form-group" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
+                <label style={{ fontSize: 12 }}>Name</label>
+                <input type="text" value={manualAddForm.full_name} onChange={e => setManualAddForm(f => ({ ...f, full_name: e.target.value }))} required placeholder="Full name" style={{ fontSize: 13 }} />
+              </div>
+              <div className="form-group" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
+                <label style={{ fontSize: 12 }}>Email</label>
+                <input type="email" value={manualAddForm.email} onChange={e => setManualAddForm(f => ({ ...f, email: e.target.value }))} required placeholder="email@example.com" style={{ fontSize: 13 }} />
+              </div>
+              <button type="submit" className="btn-primary-sm" disabled={manualAddSaving} style={{ marginBottom: 1 }}>
+                {manualAddSaving ? 'Adding…' : '+ Add'}
+              </button>
+            </form>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, alignItems: 'center' }}>
             <button className="btn-link" style={{ fontSize: 13 }} onClick={refreshRegistrants}>↻ Refresh</button>
             <button className="btn-secondary" onClick={closeModal}>Close</button>
           </div>
+        </Modal>
+      )}
+
+      {/* Bulk Message Modal */}
+      {modal === 'bulk' && (
+        <Modal title={`Message Registrants — ${activeSession?.title}`} onClose={() => setModal('registrants')}>
+          {bulkSent ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+              <h3 style={{ color: 'var(--gold)', marginBottom: 8 }}>Messages sent!</h3>
+              <p style={{ color: 'var(--muted)', marginBottom: 24 }}>
+                Your message was sent to {registrants.filter(r => !r.is_waitlisted).length} confirmed registrant{registrants.filter(r => !r.is_waitlisted).length !== 1 ? 's' : ''}.
+              </p>
+              <button className="btn-primary-sm" onClick={() => setModal('registrants')}>Back to Registrants</button>
+            </div>
+          ) : (
+            <form onSubmit={handleBulkSend} className="modal-form">
+              <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>
+                This will email all <strong style={{ color: 'var(--text)' }}>{registrants.filter(r => !r.is_waitlisted).length} confirmed registrant{registrants.filter(r => !r.is_waitlisted).length !== 1 ? 's' : ''}</strong> for this session.
+              </p>
+              <div className="form-group">
+                <label>Subject</label>
+                <input type="text" value={bulkSubject} onChange={e => setBulkSubject(e.target.value)} required placeholder="e.g. Important update about tonight's session" />
+              </div>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea value={bulkMessage} onChange={e => setBulkMessage(e.target.value)} rows={6} required placeholder="Write your message here…" />
+              </div>
+              <div className="modal-form__actions">
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                  <button type="button" className="btn-secondary" onClick={() => setModal('registrants')}>Cancel</button>
+                  <button type="submit" className="btn-primary-sm" disabled={saving}>{saving ? 'Sending…' : 'Send Emails'}</button>
+                </div>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
     </div>

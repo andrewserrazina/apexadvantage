@@ -16,7 +16,10 @@ const SQUAWK_STATUSES = [
   { value: 'resolved', label: 'Resolved' },
 ]
 
-const BLANK = { tail_number: '', make: '', model: '', year: '', status: 'available', total_hours: '', last_inspection: '', notes: '' }
+const MAINT_TYPES = ['100-Hour Inspection', 'Annual Inspection', 'Oil Change', 'AD Compliance', 'Avionics', 'Tach/Hobbs Calibration', 'Unscheduled Repair', 'Other']
+
+const BLANK = { tail_number: '', make: '', model: '', year: '', status: 'available', total_hours: '', current_tach: '', next_100hr_tach: '', annual_due_date: '', last_inspection: '', notes: '' }
+const BLANK_MAINT = { maint_type: '100-Hour Inspection', performed_at: new Date().toISOString().slice(0, 10), tach_at_service: '', description: '', performed_by: '', next_due_tach: '', next_due_date: '' }
 
 function statusBadge(s) {
   if (s === 'available') return 'badge badge--green'
@@ -49,11 +52,63 @@ export default function Aircraft() {
   const [squawkSaving, setSquawkSaving] = useState(false)
   const [addingSquawk, setAddingSquawk] = useState(false)
 
+  // Maintenance state
+  const [maintModal, setMaintModal] = useState(null) // { aircraft }
+  const [maintRecords, setMaintRecords] = useState([])
+  const [maintForm, setMaintForm] = useState(BLANK_MAINT)
+  const [maintSaving, setMaintSaving] = useState(false)
+  const [addingMaint, setAddingMaint] = useState(false)
+
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('aircraft').select('*').order('tail_number')
+    const { data } = await supabase.from('aircraft').select('*, squawks(id, status)').order('tail_number')
     setAircraft(data ?? [])
     setLoading(false)
+  }
+
+  async function openMaintenance(ac) {
+    setMaintModal({ aircraft: ac })
+    setAddingMaint(false)
+    setMaintForm(BLANK_MAINT)
+    const { data } = await supabase
+      .from('maintenance_records')
+      .select('*')
+      .eq('aircraft_id', ac.id)
+      .order('performed_at', { ascending: false })
+    setMaintRecords(data ?? [])
+  }
+
+  async function handleAddMaint(e) {
+    e.preventDefault()
+    setMaintSaving(true)
+    const { error } = await supabase.from('maintenance_records').insert({
+      aircraft_id: maintModal.aircraft.id,
+      maint_type: maintForm.maint_type,
+      performed_at: maintForm.performed_at,
+      tach_at_service: maintForm.tach_at_service ? parseFloat(maintForm.tach_at_service) : null,
+      description: maintForm.description || null,
+      performed_by: maintForm.performed_by || null,
+      next_due_tach: maintForm.next_due_tach ? parseFloat(maintForm.next_due_tach) : null,
+      next_due_date: maintForm.next_due_date || null,
+    })
+    if (!error) {
+      // Auto-update aircraft maintenance fields for 100hr/annual
+      if (maintForm.maint_type === '100-Hour Inspection' && maintForm.next_due_tach) {
+        await supabase.from('aircraft').update({ next_100hr_tach: parseFloat(maintForm.next_due_tach) }).eq('id', maintModal.aircraft.id)
+      }
+      if (maintForm.maint_type === 'Annual Inspection' && maintForm.next_due_date) {
+        await supabase.from('aircraft').update({ annual_due_date: maintForm.next_due_date }).eq('id', maintModal.aircraft.id)
+      }
+      if (maintForm.tach_at_service) {
+        await supabase.from('aircraft').update({ current_tach: parseFloat(maintForm.tach_at_service) }).eq('id', maintModal.aircraft.id)
+      }
+      setMaintForm(BLANK_MAINT)
+      setAddingMaint(false)
+      const { data } = await supabase.from('maintenance_records').select('*').eq('aircraft_id', maintModal.aircraft.id).order('performed_at', { ascending: false })
+      setMaintRecords(data ?? [])
+      load()
+    }
+    setMaintSaving(false)
   }
 
   useEffect(() => { load() }, [])
@@ -109,6 +164,9 @@ export default function Aircraft() {
       year: ac.year ?? '',
       status: ac.status ?? 'available',
       total_hours: ac.total_hours ?? '',
+      current_tach: ac.current_tach ?? '',
+      next_100hr_tach: ac.next_100hr_tach ?? '',
+      annual_due_date: ac.annual_due_date ?? '',
       last_inspection: ac.last_inspection ?? '',
       notes: ac.notes ?? '',
     })
@@ -130,6 +188,9 @@ export default function Aircraft() {
       year: form.year ? parseInt(form.year) : null,
       status: form.status,
       total_hours: form.total_hours ? parseFloat(form.total_hours) : 0,
+      current_tach: form.current_tach ? parseFloat(form.current_tach) : null,
+      next_100hr_tach: form.next_100hr_tach ? parseFloat(form.next_100hr_tach) : null,
+      annual_due_date: form.annual_due_date || null,
       last_inspection: form.last_inspection || null,
       notes: form.notes || null,
     }
@@ -152,10 +213,18 @@ export default function Aircraft() {
     load()
   }
 
-  const openSquawkCount = (acId) => {
-    // We don't have squawks loaded for all aircraft — just show a dot if there are open ones
-    // This would be enhanced with a join
-    return null
+  function openSquawkCount(ac) {
+    return (ac.squawks ?? []).filter(s => s.status === 'open').length
+  }
+
+  function daysUntil(dateStr) {
+    if (!dateStr) return null
+    return Math.round((new Date(dateStr) - new Date()) / 86400000)
+  }
+
+  function tachRemaining(ac) {
+    if (!ac.next_100hr_tach || !ac.current_tach) return null
+    return ac.next_100hr_tach - ac.current_tach
   }
 
   return (
@@ -202,15 +271,36 @@ export default function Aircraft() {
                   <p className="aircraft-card__stat-value">{ac.total_hours ?? '—'}</p>
                 </div>
                 <div>
-                  <p className="aircraft-card__stat-label">Last Inspection</p>
-                  <p className="aircraft-card__stat-value">{ac.last_inspection ? new Date(ac.last_inspection).toLocaleDateString() : '—'}</p>
+                  <p className="aircraft-card__stat-label">Tach</p>
+                  <p className="aircraft-card__stat-value">{ac.current_tach ?? '—'}</p>
                 </div>
+              </div>
+              <div className="aircraft-card__stats" style={{ marginTop: 8 }}>
+                {ac.next_100hr_tach != null && ac.current_tach != null && (
+                  <div>
+                    <p className="aircraft-card__stat-label">100-Hr Due</p>
+                    <p className="aircraft-card__stat-value" style={{ color: tachRemaining(ac) < 10 ? '#f87171' : tachRemaining(ac) < 25 ? '#fbbf24' : 'var(--text)' }}>
+                      {tachRemaining(ac).toFixed(1)} hr left
+                    </p>
+                  </div>
+                )}
+                {ac.annual_due_date && (
+                  <div>
+                    <p className="aircraft-card__stat-label">Annual Due</p>
+                    <p className="aircraft-card__stat-value" style={{ color: daysUntil(ac.annual_due_date) < 30 ? '#f87171' : daysUntil(ac.annual_due_date) < 60 ? '#fbbf24' : 'var(--text)' }}>
+                      {new Date(ac.annual_due_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
               </div>
               {ac.notes && <p className="aircraft-card__notes">{ac.notes}</p>}
               <div className="aircraft-card__actions">
                 <button className="btn-link" onClick={() => openSquawks(ac)}>
-                  Squawk Log
+                  Squawks{openSquawkCount(ac) > 0 ? ` (${openSquawkCount(ac)})` : ''}
                 </button>
+                {isStaff && (
+                  <button className="btn-link" onClick={() => openMaintenance(ac)}>Maintenance</button>
+                )}
                 {isAdmin && (
                   <button className="btn-link" onClick={() => openEdit(ac)}>Edit</button>
                 )}
@@ -257,9 +347,25 @@ export default function Aircraft() {
                 <input type="number" step="0.1" min="0" value={form.total_hours} onChange={e => field('total_hours', e.target.value)} placeholder="1200.0" />
               </div>
             </div>
-            <div className="form-group">
-              <label>Last Inspection</label>
-              <input type="date" value={form.last_inspection} onChange={e => field('last_inspection', e.target.value)} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Current Tach</label>
+                <input type="number" step="0.1" min="0" value={form.current_tach} onChange={e => field('current_tach', e.target.value)} placeholder="1452.3" />
+              </div>
+              <div className="form-group">
+                <label>Next 100-Hr Due (Tach)</label>
+                <input type="number" step="0.1" min="0" value={form.next_100hr_tach} onChange={e => field('next_100hr_tach', e.target.value)} placeholder="1500.0" />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Annual Due Date</label>
+                <input type="date" value={form.annual_due_date} onChange={e => field('annual_due_date', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Last Inspection</label>
+                <input type="date" value={form.last_inspection} onChange={e => field('last_inspection', e.target.value)} />
+              </div>
             </div>
             <div className="form-group">
               <label>Notes</label>
@@ -275,6 +381,87 @@ export default function Aircraft() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Maintenance log modal */}
+      {maintModal && (
+        <Modal title={`Maintenance — ${maintModal.aircraft.tail_number}`} onClose={() => setMaintModal(null)} wide>
+          <div className="modal-form">
+            {maintRecords.length === 0 && !addingMaint && (
+              <p className="empty-state" style={{ marginBottom: 16 }}>No maintenance records logged.</p>
+            )}
+
+            {maintRecords.length > 0 && (
+              <div className="table-wrap" style={{ marginBottom: 16 }}>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Type</th><th>Date</th><th>Tach</th><th>Next Due</th><th>Performed By</th></tr>
+                  </thead>
+                  <tbody>
+                    {maintRecords.map(m => (
+                      <tr key={m.id}>
+                        <td>{m.maint_type}</td>
+                        <td>{new Date(m.performed_at).toLocaleDateString()}</td>
+                        <td>{m.tach_at_service ?? '—'}</td>
+                        <td>{m.next_due_tach ? `${m.next_due_tach} tach` : m.next_due_date ? new Date(m.next_due_date).toLocaleDateString() : '—'}</td>
+                        <td>{m.performed_by ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {addingMaint ? (
+              <form onSubmit={handleAddMaint} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Type</label>
+                    <select value={maintForm.maint_type} onChange={e => setMaintForm(f => ({ ...f, maint_type: e.target.value }))}>
+                      {MAINT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Date Performed</label>
+                    <input type="date" value={maintForm.performed_at} onChange={e => setMaintForm(f => ({ ...f, performed_at: e.target.value }))} required />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Tach at Service</label>
+                    <input type="number" step="0.1" value={maintForm.tach_at_service} onChange={e => setMaintForm(f => ({ ...f, tach_at_service: e.target.value }))} placeholder="1452.3" />
+                  </div>
+                  <div className="form-group">
+                    <label>Performed By</label>
+                    <input type="text" value={maintForm.performed_by} onChange={e => setMaintForm(f => ({ ...f, performed_by: e.target.value }))} placeholder="A&P / IA name" />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Next Due (Tach)</label>
+                    <input type="number" step="0.1" value={maintForm.next_due_tach} onChange={e => setMaintForm(f => ({ ...f, next_due_tach: e.target.value }))} placeholder="1552.3" />
+                  </div>
+                  <div className="form-group">
+                    <label>Next Due (Date)</label>
+                    <input type="date" value={maintForm.next_due_date} onChange={e => setMaintForm(f => ({ ...f, next_due_date: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Description / Notes</label>
+                  <textarea value={maintForm.description} onChange={e => setMaintForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="Work performed…" />
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setAddingMaint(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary-sm" disabled={maintSaving}>{maintSaving ? 'Saving…' : 'Log Entry'}</button>
+                </div>
+              </form>
+            ) : (
+              <button className="btn-secondary" style={{ width: '100%' }} onClick={() => setAddingMaint(true)}>
+                + Log Maintenance Entry
+              </button>
+            )}
+          </div>
         </Modal>
       )}
 
