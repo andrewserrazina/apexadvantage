@@ -23,6 +23,22 @@ export default function Schedule() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
+  // Dispatch release
+  const [dispatchModal, setDispatchModal] = useState(null) // lesson
+  const [dispatchChecks, setDispatchChecks] = useState({})
+  const [dispatchSaving, setDispatchSaving] = useState(false)
+
+  const DISPATCH_ITEMS = [
+    'Weather briefing obtained (1800wxbrief or ForeFlight)',
+    'NOTAMs reviewed',
+    'Aircraft airworthiness confirmed (no open squawks)',
+    'Aircraft preflight completed',
+    'Fuel & oil levels verified',
+    'Student documents verified (student cert, medical)',
+    'Instructor is current (flight review, medical, CFI)',
+    'Route of flight filed / discussed',
+  ]
+
   // Lesson requests
   const [tab, setTab] = useState('calendar') // 'calendar' | 'requests'
   const [requests, setRequests] = useState([])
@@ -121,17 +137,61 @@ export default function Schedule() {
   function field(key, val) { setForm(f => ({ ...f, [key]: val })) }
   function buildIso(date, time) { return new Date(`${date}T${time}:00`).toISOString() }
 
+  async function checkConflicts(startsAt, endsAt, aircraftId, instructorId, excludeId) {
+    const conflicts = []
+
+    if (aircraftId) {
+      let q = supabase.from('lessons')
+        .select('id, starts_at, ends_at, student:profiles!student_id(full_name)')
+        .eq('aircraft_id', aircraftId)
+        .lt('starts_at', endsAt)
+        .gt('ends_at', startsAt)
+      if (excludeId) q = q.neq('id', excludeId)
+      const { data } = await q
+      if (data?.length) conflicts.push(`Aircraft conflict with ${data[0].student?.full_name ?? 'another lesson'} at ${new Date(data[0].starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`)
+    }
+
+    if (instructorId) {
+      let q = supabase.from('lessons')
+        .select('id, starts_at, ends_at, student:profiles!student_id(full_name)')
+        .eq('instructor_id', instructorId)
+        .lt('starts_at', endsAt)
+        .gt('ends_at', startsAt)
+      if (excludeId) q = q.neq('id', excludeId)
+      const { data } = await q
+      if (data?.length) conflicts.push(`Instructor conflict with ${data[0].student?.full_name ?? 'another lesson'}`)
+    }
+
+    return conflicts
+  }
+
   async function handleSave(e) {
     e.preventDefault()
     setSaving(true)
     setFormError('')
+    const startsAt = buildIso(form.date, form.start_time)
+    const endsAt = buildIso(form.date, form.end_time)
+
+    if (new Date(endsAt) <= new Date(startsAt)) {
+      setFormError('End time must be after start time.')
+      setSaving(false)
+      return
+    }
+
+    const conflicts = await checkConflicts(startsAt, endsAt, form.aircraft_id || null, form.instructor_id || null, modal.mode === 'edit' ? modal.lesson.id : null)
+    if (conflicts.length) {
+      setFormError('Scheduling conflict: ' + conflicts.join('; '))
+      setSaving(false)
+      return
+    }
+
     const payload = {
       student_id: form.student_id || null,
       instructor_id: form.instructor_id || null,
       aircraft_id: form.aircraft_id || null,
       lesson_type: form.lesson_type || null,
-      starts_at: buildIso(form.date, form.start_time),
-      ends_at: buildIso(form.date, form.end_time),
+      starts_at: startsAt,
+      ends_at: endsAt,
     }
     let error
     if (modal.mode === 'create') {
@@ -221,6 +281,27 @@ export default function Schedule() {
     loadRequests()
   }
 
+  function openDispatch(lesson, e) {
+    e.stopPropagation()
+    setDispatchChecks(Object.fromEntries(DISPATCH_ITEMS.map(i => [i, false])))
+    setDispatchModal(lesson)
+  }
+
+  async function handleDispatchRelease(e) {
+    e.preventDefault()
+    const allChecked = DISPATCH_ITEMS.every(i => dispatchChecks[i])
+    if (!allChecked) { alert('All checklist items must be completed before dispatch.'); return }
+    setDispatchSaving(true)
+    await supabase.from('dispatch_releases').insert({
+      lesson_id: dispatchModal.id,
+      released_by: profile.id,
+      checklist: dispatchChecks,
+    })
+    setDispatchSaving(false)
+    setDispatchModal(null)
+    alert('Dispatch release logged successfully.')
+  }
+
   const pendingCount = requests.filter(r => r.status === 'pending').length
 
   const availableAircraft = aircraft.filter(a => a.status === 'available')
@@ -276,6 +357,13 @@ export default function Schedule() {
                       <span>{new Date(l.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       <span>{l.student?.full_name ?? '—'}</span>
                       {l.lesson_type && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>{l.lesson_type}</span>}
+                      {canEdit && (
+                        <button
+                          className="cal-dispatch-btn"
+                          onClick={e => openDispatch(l, e)}
+                          title="Dispatch Release"
+                        >⬆ Dispatch</button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -390,6 +478,38 @@ export default function Schedule() {
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="btn-primary-sm" disabled={saving}>{saving ? 'Saving…' : modal.mode === 'create' ? 'Book Lesson' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Dispatch release modal */}
+      {dispatchModal && (
+        <Modal title={`Dispatch Release — ${dispatchModal.student?.full_name ?? 'Lesson'}`} onClose={() => setDispatchModal(null)}>
+          <form onSubmit={handleDispatchRelease} className="modal-form">
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+              {new Date(dispatchModal.starts_at).toLocaleDateString()} at {new Date(dispatchModal.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              {DISPATCH_ITEMS.map(item => (
+                <label key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={dispatchChecks[item] ?? false}
+                    onChange={e => setDispatchChecks(c => ({ ...c, [item]: e.target.checked }))}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                  />
+                  {item}
+                </label>
+              ))}
+            </div>
+            <div className="modal-form__actions">
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-secondary" onClick={() => setDispatchModal(null)}>Cancel</button>
+                <button type="submit" className="btn-primary-sm" disabled={dispatchSaving || !DISPATCH_ITEMS.every(i => dispatchChecks[i])}>
+                  {dispatchSaving ? 'Logging…' : 'Release for Flight'}
+                </button>
               </div>
             </div>
           </form>

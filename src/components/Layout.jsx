@@ -6,17 +6,23 @@ import ApexLogo from './ApexLogo'
 import NotificationBell from './NotificationBell'
 
 const navItems = [
-  { to: '/dashboard',      label: 'Dashboard',    roles: ['admin', 'instructor', 'student'] },
-  { to: '/analytics',     label: 'Analytics',    roles: ['admin'] },
-  { to: '/students',       label: 'Students',     roles: ['admin'] },
-  { to: '/instructors',    label: 'Instructors',  roles: ['admin', 'instructor', 'student'] },
-  { to: '/aircraft',       label: 'Fleet',        roles: ['admin', 'instructor', 'student'] },
-  { to: '/syllabi',        label: 'Syllabi',      roles: ['admin', 'instructor', 'student'] },
-  { to: '/schedule',       label: 'Schedule',     roles: ['admin', 'instructor', 'student'] },
-  { to: '/logbook',        label: 'Logbook',      roles: ['admin', 'instructor', 'student'] },
-  { to: '/billing',         label: 'Billing',       roles: ['admin', 'instructor', 'student'] },
-  { to: '/documents',       label: 'Documents',     roles: ['admin', 'instructor', 'student'] },
-  { to: '/ground-schedule', label: 'Ground School', roles: ['admin', 'instructor', 'student'] },
+  { to: '/dashboard',       label: 'Dashboard',       roles: ['admin', 'instructor', 'student'] },
+  { to: '/analytics',       label: 'Analytics',       roles: ['admin'] },
+  { to: '/students',        label: 'Students',        roles: ['admin'] },
+  { to: '/instructors',     label: 'Instructors',     roles: ['admin', 'instructor', 'student'] },
+  { to: '/aircraft',        label: 'Fleet',           roles: ['admin', 'instructor', 'student'] },
+  { to: '/syllabi',         label: 'Syllabi',         roles: ['admin', 'instructor', 'student'] },
+  { to: '/schedule',        label: 'Schedule',        roles: ['admin', 'instructor', 'student'] },
+  { to: '/logbook',         label: 'Logbook',         roles: ['admin', 'instructor', 'student'] },
+  { to: '/billing',         label: 'Billing',         roles: ['admin', 'instructor', 'student'] },
+  { to: '/documents',       label: 'Documents',       roles: ['admin', 'instructor', 'student'] },
+  { to: '/ground-schedule', label: 'Ground School',   roles: ['admin', 'instructor', 'student'] },
+  { to: '/endorsements',    label: 'Endorsements',    roles: ['admin', 'instructor', 'student'] },
+  { to: '/instructor-hub',  label: 'Instructor Hub',  roles: ['admin', 'instructor'] },
+  { to: '/crm',             label: 'CRM',             roles: ['admin', 'instructor'] },
+  { to: '/messages',        label: 'Messages',        roles: ['admin', 'instructor', 'student'] },
+  { to: '/announcements',   label: 'Announcements',   roles: ['admin', 'instructor', 'student'] },
+  { to: '/reports',         label: 'Reports',         roles: ['admin'] },
 ]
 
 const SEARCH_TABLES = [
