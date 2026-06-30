@@ -9,6 +9,7 @@ export default function Messages() {
   const [users, setUsers] = useState([])
   const [threads, setThreads] = useState([]) // [{other, messages, unread}]
   const [activeThread, setActiveThread] = useState(null) // other user id
+  const activeThreadRef = useRef(null) // ref so realtime callback always has current value
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [text, setText] = useState('')
@@ -24,12 +25,12 @@ export default function Messages() {
     loadUsers()
     loadThreads()
 
-    // Real-time subscription
+    // Real-time subscription — use ref so callback always has current activeThread
     channelRef.current = supabase
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `recipient_id=eq.${profile.id}` }, () => {
         loadThreads()
-        if (activeThread) loadMessages(activeThread)
+        if (activeThreadRef.current) loadMessages(activeThreadRef.current)
       })
       .subscribe()
 
@@ -91,6 +92,7 @@ export default function Messages() {
   }
 
   async function openThread(otherId) {
+    activeThreadRef.current = otherId
     setActiveThread(otherId)
     await loadMessages(otherId)
   }

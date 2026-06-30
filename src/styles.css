@@ -2232,3 +2232,18 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   color: var(--muted);
   font-style: italic;
 }
+
+/* ─── NOTIFICATION BADGE (used in Messages header) ── */
+.notif-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gold);
+  color: #000;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 20px;
+  padding: 1px 7px;
+  min-width: 20px;
+  vertical-align: middle;
+}
