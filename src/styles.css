@@ -2066,3 +2066,169 @@ em { font-family: 'Playfair Display', serif; font-style: italic; }
   text-align: center;
 }
 .cal-dispatch-btn:hover { background: rgba(74,222,128,0.22); }
+
+/* ─── WEATHER WIDGET ─────────────────────────── */
+.wx-widget {
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.wx-widget--loading, .wx-widget--error {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 10px 0;
+  margin-bottom: 16px;
+}
+.wx-widget__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 10px;
+}
+.wx-widget__airport {
+  font-weight: 800;
+  font-size: 16px;
+  margin-right: 10px;
+}
+.wx-cat-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+.wx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.wx-cell__label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.wx-cell__value { font-size: 14px; font-weight: 600; }
+.wx-widget__raw {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--navy-3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.wx-widget__updated { font-size: 11px; color: var(--muted); margin: 0; }
+
+/* Compact weather bar */
+.wx-compact {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+.wx-compact:hover { border-color: var(--gold); }
+.wx-compact__cat { font-weight: 800; }
+.wx-compact__detail { color: var(--muted); }
+
+/* ─── STUDENT PROGRESS ───────────────────────── */
+.prog-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 100px;
+  align-items: center;
+  gap: 12px;
+}
+.prog-row__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.prog-bar-wrap {
+  height: 8px;
+  background: var(--navy-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.prog-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.prog-row__nums {
+  display: flex;
+  gap: 4px;
+  font-size: 13px;
+  justify-content: flex-end;
+}
+.milestone-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.milestone-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.milestone-check--done {
+  background: rgba(74,222,128,0.15);
+  border-color: #4ade80;
+  color: #4ade80;
+}
+
+/* ─── ENHANCED LOGBOOK ───────────────────────── */
+.logbook-totals {
+  grid-template-columns: repeat(8, 1fr) !important;
+  margin-bottom: 20px;
+}
+.stat-card--sm .stat-card__label { font-size: 10px; }
+.stat-card--sm .stat-card__value { font-size: 20px; }
+
+.logbook-table th, .logbook-table td { font-size: 12px; padding: 8px 10px; }
+.logbook-row:hover { background: rgba(255,255,255,0.03); }
+.logbook-expanded td { padding: 0 !important; }
+.logbook-detail {
+  background: var(--navy-3);
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.logbook-detail__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.logbook-detail__row strong { color: var(--text); }
+.logbook-detail__remarks {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}

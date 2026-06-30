@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import Layout from '../components/Layout'
 import Modal from '../components/Modal'
+import WeatherWidget from '../components/WeatherWidget'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -327,6 +328,8 @@ export default function Schedule() {
         </div>
       </div>
 
+      <WeatherWidget compact />
+
       <div className="tab-bar" style={{ marginBottom: 20 }}>
         <button className={`tab-btn${tab === 'calendar' ? ' tab-btn--active' : ''}`} onClick={() => setTab('calendar')}>Calendar</button>
         <button className={`tab-btn${tab === 'requests' ? ' tab-btn--active' : ''}`} onClick={() => setTab('requests')}>
@@ -486,12 +489,13 @@ export default function Schedule() {
 
       {/* Dispatch release modal */}
       {dispatchModal && (
-        <Modal title={`Dispatch Release — ${dispatchModal.student?.full_name ?? 'Lesson'}`} onClose={() => setDispatchModal(null)}>
+        <Modal title={`Dispatch Release — ${dispatchModal.student?.full_name ?? 'Lesson'}`} onClose={() => setDispatchModal(null)} wide>
           <form onSubmit={handleDispatchRelease} className="modal-form">
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
               {new Date(dispatchModal.starts_at).toLocaleDateString()} at {new Date(dispatchModal.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            <WeatherWidget />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '16px 0 20px' }}>
               {DISPATCH_ITEMS.map(item => (
                 <label key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: 13 }}>
                   <input

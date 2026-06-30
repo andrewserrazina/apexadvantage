@@ -17,6 +17,7 @@ const navItems = [
   { to: '/billing',         label: 'Billing',         roles: ['admin', 'instructor', 'student'] },
   { to: '/documents',       label: 'Documents',       roles: ['admin', 'instructor', 'student'] },
   { to: '/ground-schedule', label: 'Ground School',   roles: ['admin', 'instructor', 'student'] },
+  { to: '/progress',        label: 'My Progress',     roles: ['admin', 'instructor', 'student'] },
   { to: '/endorsements',    label: 'Endorsements',    roles: ['admin', 'instructor', 'student'] },
   { to: '/instructor-hub',  label: 'Instructor Hub',  roles: ['admin', 'instructor'] },
   { to: '/crm',             label: 'CRM',             roles: ['admin', 'instructor'] },

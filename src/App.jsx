@@ -23,6 +23,7 @@ import Messages from './pages/Messages'
 import Announcements from './pages/Announcements'
 import Reports from './pages/Reports'
 import InstructorHub from './pages/InstructorHub'
+import Progress from './pages/Progress'
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/announcements"   element={<ProtectedRoute><Announcements /></ProtectedRoute>} />
             <Route path="/reports"         element={<ProtectedRoute adminOnly><Reports /></ProtectedRoute>} />
             <Route path="/instructor-hub"  element={<ProtectedRoute><InstructorHub /></ProtectedRoute>} />
+            <Route path="/progress"        element={<ProtectedRoute><Progress /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>

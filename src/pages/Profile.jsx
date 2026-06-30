@@ -10,7 +10,7 @@ export default function Profile() {
   const isInstructor = profile?.role === 'instructor'
   const isStudent = profile?.role === 'student'
 
-  const [form, setForm] = useState({ full_name: '', bio: '', certificates: '', certificate_status: 'None', medical_expiry: '' })
+  const [form, setForm] = useState({ full_name: '', bio: '', certificates: '', certificate_status: 'None', medical_expiry: '', last_flight_review: '', last_ipc: '', cfi_expiry: '' })
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [saveErr, setSaveErr] = useState('')
@@ -28,6 +28,9 @@ export default function Profile() {
       certificates: profile.certificates ?? '',
       certificate_status: profile.certificate_status ?? 'None',
       medical_expiry: profile.medical_expiry ?? '',
+      last_flight_review: profile.last_flight_review ?? '',
+      last_ipc: profile.last_ipc ?? '',
+      cfi_expiry: profile.cfi_expiry ?? '',
     })
   }, [profile])
 
@@ -42,7 +45,13 @@ export default function Profile() {
       full_name: form.full_name,
       bio: form.bio || null,
     }
-    if (isInstructor) payload.certificates = form.certificates || null
+    if (isInstructor) {
+      payload.certificates = form.certificates || null
+      payload.medical_expiry = form.medical_expiry || null
+      payload.last_flight_review = form.last_flight_review || null
+      payload.last_ipc = form.last_ipc || null
+      payload.cfi_expiry = form.cfi_expiry || null
+    }
     if (isStudent) {
       payload.certificate_status = form.certificate_status || null
       payload.medical_expiry = form.medical_expiry || null
@@ -93,10 +102,32 @@ export default function Profile() {
             </div>
 
             {isInstructor && (
-              <div className="form-group">
-                <label>Certificates & Ratings</label>
-                <input type="text" value={form.certificates} onChange={e => field('certificates', e.target.value)} placeholder="e.g. CFI, CFII, MEI, ATP" />
-              </div>
+              <>
+                <div className="form-group">
+                  <label>Certificates & Ratings</label>
+                  <input type="text" value={form.certificates} onChange={e => field('certificates', e.target.value)} placeholder="e.g. CFI, CFII, MEI, ATP" />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Medical Expiry</label>
+                    <input type="date" value={form.medical_expiry} onChange={e => field('medical_expiry', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>CFI Expiry</label>
+                    <input type="date" value={form.cfi_expiry} onChange={e => field('cfi_expiry', e.target.value)} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Last Flight Review (BFR)</label>
+                    <input type="date" value={form.last_flight_review} onChange={e => field('last_flight_review', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Last IPC</label>
+                    <input type="date" value={form.last_ipc} onChange={e => field('last_ipc', e.target.value)} />
+                  </div>
+                </div>
+              </>
             )}
 
             {isStudent && (
